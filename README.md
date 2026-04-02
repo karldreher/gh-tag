@@ -4,6 +4,10 @@ The missing tag command.
 
 `gh tag` replaces the manual `git tag v1.0.0 && git push origin v1.0.0` ritual with a single interactive command that discovers existing remote tags, asks how to bump the version, and handles everything in one shot.
 
+Semver is *the* best way to version your packages and repos, and this tool emphasizes and favors this pattern. https://semver.org/
+
+Never fear a major release! 
+
 ## Installation
 
 ```

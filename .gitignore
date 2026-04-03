@@ -8,6 +8,9 @@
 *.so
 *.dylib
 
+# This binary
+gh-tag
+
 # Test binary, built with `go test -c`
 *.test
 

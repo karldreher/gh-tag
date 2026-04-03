@@ -1,0 +1,217 @@
+package main
+
+import (
+	"bufio"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// makeReader wraps a string as a bufio.Reader for use as fake stdin.
+func makeReader(input string) *bufio.Reader {
+	return bufio.NewReader(strings.NewReader(input))
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// validateBumpFlags
+// ──────────────────────────────────────────────────────────────────────────────
+
+func TestValidateBumpFlags(t *testing.T) {
+	tests := []struct {
+		name    string
+		major   bool
+		minor   bool
+		patch   bool
+		wantErr bool
+	}{
+		{"none set", false, false, false, false},
+		{"major only", true, false, false, false},
+		{"minor only", false, true, false, false},
+		{"patch only", false, false, true, false},
+		{"major+minor", true, true, false, true},
+		{"major+patch", true, false, true, true},
+		{"minor+patch", false, true, true, true},
+		{"all three", true, true, true, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateBumpFlags(tc.major, tc.minor, tc.patch)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("validateBumpFlags(%v,%v,%v) err=%v, wantErr=%v",
+					tc.major, tc.minor, tc.patch, err, tc.wantErr)
+			}
+			if err != nil && !strings.Contains(err.Error(), "mutually exclusive") {
+				t.Errorf("unexpected error message: %v", err)
+			}
+		})
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// readBumpType
+// ──────────────────────────────────────────────────────────────────────────────
+
+func TestReadBumpType_Flags(t *testing.T) {
+	tests := []struct {
+		name  string
+		major bool
+		minor bool
+		patch bool
+		want  string
+	}{
+		{"major flag", true, false, false, "major"},
+		{"minor flag", false, true, false, "minor"},
+		{"patch flag", false, false, true, "patch"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := makeReader("") // stdin not read when flags are set
+			got, err := readBumpType(r, tc.major, tc.minor, tc.patch)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestReadBumpType_Interactive(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		// Single-char keys (case-sensitive)
+		{"M → major", "M\n", "major", false},
+		{"m → minor", "m\n", "minor", false},
+		{"p → patch", "p\n", "patch", false},
+		{"P → patch", "P\n", "patch", false},
+
+		// Full word inputs
+		{"major word", "major\n", "major", false},
+		{"minor word", "minor\n", "minor", false},
+		{"patch word", "patch\n", "patch", false},
+		{"Major capitalized", "Major\n", "major", false},
+		{"Minor capitalized", "Minor\n", "minor", false},
+		{"Patch capitalized", "Patch\n", "patch", false},
+
+		// Invalid inputs
+		{"empty", "\n", "", true},
+		{"x invalid", "x\n", "", true},
+		{"lowercase major misspelled", "MAJOR\n", "", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := makeReader(tc.input)
+			got, err := readBumpType(r, false, false, false)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("readBumpType(%q) err=%v, wantErr=%v", tc.input, err, tc.wantErr)
+			}
+			if !tc.wantErr && got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// confirmAction
+// ──────────────────────────────────────────────────────────────────────────────
+
+func TestConfirmAction(t *testing.T) {
+	tests := []struct {
+		name        string
+		skipConfirm bool
+		input       string
+		want        bool
+	}{
+		{"skip confirm bypasses", true, "", true},
+		{"y confirms", false, "y\n", true},
+		{"yes confirms", false, "yes\n", true},
+		{"Y confirms", false, "Y\n", true},
+		{"YES confirms", false, "YES\n", true},
+		{"n denies", false, "n\n", false},
+		{"N denies", false, "N\n", false},
+		{"no denies", false, "no\n", false},
+		{"empty denies", false, "\n", false},
+		{"random denies", false, "sure\n", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := makeReader(tc.input)
+			got, err := confirmAction(r, tc.skipConfirm, "Proceed? [y/N]: ")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("confirmAction(skip=%v, input=%q) = %v, want %v",
+					tc.skipConfirm, tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// effectivePrefix
+// ──────────────────────────────────────────────────────────────────────────────
+
+func TestEffectivePrefix(t *testing.T) {
+	t.Run("no config returns v", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		got, err := effectivePrefix()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "v" {
+			t.Errorf("got %q, want %q", got, "v")
+		}
+	})
+
+	t.Run("config with prefix returns it", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		t.Setenv("HOME", tmpDir)
+		if err := os.MkdirAll(filepath.Join(tmpDir, ".gh-tag"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(tmpDir, ".gh-tag", "config.json"),
+			[]byte(`{"prefix":"release-"}`), 0644,
+		); err != nil {
+			t.Fatal(err)
+		}
+		got, err := effectivePrefix()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "release-" {
+			t.Errorf("got %q, want %q", got, "release-")
+		}
+	})
+
+	t.Run("config with empty prefix returns v", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		t.Setenv("HOME", tmpDir)
+		if err := os.MkdirAll(filepath.Join(tmpDir, ".gh-tag"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(tmpDir, ".gh-tag", "config.json"),
+			[]byte(`{"prefix":""}`), 0644,
+		); err != nil {
+			t.Fatal(err)
+		}
+		got, err := effectivePrefix()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "v" {
+			t.Errorf("got %q, want %q", got, "v")
+		}
+	})
+}
+
+

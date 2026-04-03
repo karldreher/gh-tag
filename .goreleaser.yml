@@ -1,0 +1,36 @@
+version: 2
+project_name: gh-tag
+builds:
+  - main: ./main.go
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+archives:
+  - id: tar
+    format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+  - id: bin
+    format: binary
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+  - id: bare
+    format: binary
+    name_template: "{{ .ProjectName }}"
+    files:
+      - LICENSE
+      - README.md
+release:
+  github:
+    owner: karldreher
+    name: gh-tag

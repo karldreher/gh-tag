@@ -73,13 +73,7 @@ func confirmAction(reader *bufio.Reader, skipConfirm bool, prompt string) (bool,
 }
 
 // runTagCmd is the handler for the root `gh tag` command.
-func runTagCmd(cmd *cobra.Command, args []string) error {
-	majorFlag, _ := cmd.Flags().GetBool("major")
-	minorFlag, _ := cmd.Flags().GetBool("minor")
-	patchFlag, _ := cmd.Flags().GetBool("patch")
-	skipConfirm, _ := cmd.Flags().GetBool("confirm")
-	overwriteFlag, _ := cmd.Flags().GetBool("overwrite")
-
+func runTagCmd(majorFlag, minorFlag, patchFlag, skipConfirm, overwriteFlag bool) error {
 	prefix, err := effectivePrefix()
 	if err != nil {
 		return err
@@ -227,9 +221,7 @@ func runTagCmd(cmd *cobra.Command, args []string) error {
 }
 
 // runPrefixCmd is the handler for `gh tag prefix`.
-func runPrefixCmd(cmd *cobra.Command, args []string) error {
-	editFlag, _ := cmd.Flags().GetBool("edit")
-
+func runPrefixCmd(editFlag bool) error {
 	current, err := effectivePrefix()
 	if err != nil {
 		return err
@@ -267,29 +259,36 @@ func runPrefixCmd(cmd *cobra.Command, args []string) error {
 }
 
 func main() {
+	var major, minor, patch, confirm, overwrite bool
 	rootCmd := &cobra.Command{
 		Use:   "gh-tag",
 		Short: "🏷️  The missing tag command.",
-		RunE:  runTagCmd,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runTagCmd(major, minor, patch, confirm, overwrite)
+		},
 	}
-	rootCmd.Flags().Bool("major", false, "bump major version")
-	rootCmd.Flags().Bool("minor", false, "bump minor version")
-	rootCmd.Flags().Bool("patch", false, "bump patch version")
-	rootCmd.Flags().Bool("confirm", false, "skip confirmation prompt")
-	rootCmd.Flags().Bool("overwrite", false, "overwrite the latest tag at HEAD")
+	rootCmd.Flags().BoolVar(&major, "major", false, "bump major version")
+	rootCmd.Flags().BoolVar(&minor, "minor", false, "bump minor version")
+	rootCmd.Flags().BoolVar(&patch, "patch", false, "bump patch version")
+	rootCmd.Flags().BoolVar(&confirm, "confirm", false, "skip confirmation prompt")
+	rootCmd.Flags().BoolVar(&overwrite, "overwrite", false, "overwrite the latest tag at HEAD")
 	rootCmd.MarkFlagsMutuallyExclusive("overwrite", "major", "minor", "patch")
 
+	var edit bool
 	prefixCmd := &cobra.Command{
 		Use:   "prefix",
 		Short: "View or set the tag prefix (default: v)",
-		RunE:  runPrefixCmd,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runPrefixCmd(edit)
+		},
 	}
-	prefixCmd.Flags().Bool("edit", false, "interactively set the tag prefix")
+	prefixCmd.Flags().BoolVar(&edit, "edit", false, "interactively set the tag prefix")
 
 	rootCmd.AddCommand(prefixCmd)
 
+	rootCmd.SilenceErrors = true
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }

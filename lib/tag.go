@@ -44,7 +44,7 @@ func ParseVersion(tag, prefix string) (major, minor, patch int, ok bool) {
 
 	// Each part must be a non-negative integer with no extra characters
 	// (e.g. "0-beta" must fail, not silently succeed as 0).
-	nums := make([]int, 3)
+	var nums [3]int
 	for i, p := range parts {
 		// Reject empty parts, leading signs, or any non-digit characters
 		// that Atoi would silently accept (it does not accept them, but be explicit).
@@ -91,7 +91,7 @@ func FindLatestTag(tags []string, prefix string) (major, minor, patch int, found
 			major, minor, patch = ma, mi, pa
 		}
 	}
-	return
+	return major, minor, patch, found
 }
 
 // BumpVersion returns the next version for the given bump type.
@@ -206,6 +206,19 @@ func PushTag(tag string) error {
 // force-push due to release immutability being enabled on the repository.
 var ErrPushImmutable = errors.New("remote rejected force-push: release immutability enabled")
 
+// shortSHA runs cmd, expects a git SHA on stdout, and returns the first 7 chars.
+func shortSHA(cmd *exec.Cmd) (string, error) {
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	sha := strings.TrimSpace(string(out))
+	if len(sha) >= 7 {
+		sha = sha[:7]
+	}
+	return sha, nil
+}
+
 // resolveTagRefCmd resolves a tag to its commit SHA. Replaceable in tests.
 var resolveTagRefCmd = func(tag string) *exec.Cmd {
 	return exec.Command("git", "rev-list", "-n", "1", tag)
@@ -213,14 +226,9 @@ var resolveTagRefCmd = func(tag string) *exec.Cmd {
 
 // ResolveTagRef returns the short (7-char) commit SHA that tag points to.
 func ResolveTagRef(tag string) (string, error) {
-	cmd := resolveTagRefCmd(tag)
-	out, err := cmd.Output()
+	sha, err := shortSHA(resolveTagRefCmd(tag))
 	if err != nil {
 		return "", fmt.Errorf("resolving ref for tag %s: %w", tag, err)
-	}
-	sha := strings.TrimSpace(string(out))
-	if len(sha) >= 7 {
-		sha = sha[:7]
 	}
 	return sha, nil
 }
@@ -232,14 +240,9 @@ var resolveHeadCmd = func() *exec.Cmd {
 
 // ResolveHead returns the short (7-char) commit SHA of HEAD.
 func ResolveHead() (string, error) {
-	cmd := resolveHeadCmd()
-	out, err := cmd.Output()
+	sha, err := shortSHA(resolveHeadCmd())
 	if err != nil {
 		return "", fmt.Errorf("resolving HEAD: %w", err)
-	}
-	sha := strings.TrimSpace(string(out))
-	if len(sha) >= 7 {
-		sha = sha[:7]
 	}
 	return sha, nil
 }

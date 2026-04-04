@@ -20,6 +20,18 @@ type Config struct {
 	OverwriteConfirmed bool `json:"overwrite_confirmed"`
 }
 
+// EffectivePrefix returns the tag prefix from config, defaulting to "v".
+func EffectivePrefix() (string, error) {
+	cfg, err := LoadConfig()
+	if err != nil {
+		return "", fmt.Errorf("loading config: %w", err)
+	}
+	if cfg.Prefix == "" {
+		return "v", nil
+	}
+	return cfg.Prefix, nil
+}
+
 // ConfigPath returns the absolute path to the config file (~/.gh-tag/config.json).
 func ConfigPath() (string, error) {
 	home, err := os.UserHomeDir()

@@ -2,6 +2,7 @@ package lib
 
 import (
 	"errors"
+	"fmt"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -103,6 +104,54 @@ func TestParseVersion(t *testing.T) {
 					tc.tag, tc.prefix, maj, min, pat, tc.wantMaj, tc.wantMin, tc.wantPat)
 			}
 		})
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// ParseVersion — non-integer component matrix
+//
+// Each row in nonIntValues is injected into every component position
+// (major / minor / patch) while the remaining two positions hold valid
+// integers. Every combination must return ok=false.
+// ──────────────────────────────────────────────────────────────────────────────
+
+func TestParseVersion_NonIntegerMatrix(t *testing.T) {
+	nonIntValues := []string{
+		"abc",  // pure alpha
+		"1a",   // trailing alpha
+		"a1",   // leading alpha
+		"1-0",  // hyphen (pre-release style within a component)
+		"!",    // special character
+		" ",    // whitespace
+		"",     // empty component
+	}
+
+	for _, bad := range nonIntValues {
+		tests := []struct {
+			name string
+			tag  string
+		}{
+			{
+				name: fmt.Sprintf("major=%q/minor=int/patch=int", bad),
+				tag:  fmt.Sprintf("v%s.1.2", bad),
+			},
+			{
+				name: fmt.Sprintf("major=int/minor=%q/patch=int", bad),
+				tag:  fmt.Sprintf("v0.%s.2", bad),
+			},
+			{
+				name: fmt.Sprintf("major=int/minor=int/patch=%q", bad),
+				tag:  fmt.Sprintf("v0.1.%s", bad),
+			},
+		}
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				_, _, _, ok := ParseVersion(tc.tag, "v")
+				if ok {
+					t.Errorf("ParseVersion(%q) returned ok=true, want false", tc.tag)
+				}
+			})
+		}
 	}
 }
 
@@ -851,6 +900,49 @@ func TestHasTagsWithDifferentPrefix(t *testing.T) {
 			if got != tc.want {
 				t.Errorf("HasTagsWithDifferentPrefix(%v, %q) = %v, want %v",
 					tc.tags, tc.prefix, got, tc.want)
+			}
+		})
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// ParseBumpType
+// ──────────────────────────────────────────────────────────────────────────────
+
+func TestParseBumpType(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		// Single-char keys (case-sensitive)
+		{"M → major", "M", "major", false},
+		{"m → minor", "m", "minor", false},
+		{"p → patch", "p", "patch", false},
+		{"P → patch", "P", "patch", false},
+
+		// Full word inputs
+		{"major word", "major", "major", false},
+		{"minor word", "minor", "minor", false},
+		{"patch word", "patch", "patch", false},
+		{"Major capitalized", "Major", "major", false},
+		{"Minor capitalized", "Minor", "minor", false},
+		{"Patch capitalized", "Patch", "patch", false},
+
+		// Invalid inputs
+		{"empty", "", "", true},
+		{"x invalid", "x", "", true},
+		{"MAJOR uppercase", "MAJOR", "", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ParseBumpType(tc.input)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("ParseBumpType(%q) err=%v, wantErr=%v", tc.input, err, tc.wantErr)
+			}
+			if !tc.wantErr && got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
 			}
 		})
 	}

@@ -117,6 +117,22 @@ func FormatTag(prefix string, major, minor, patch int) string {
 	return fmt.Sprintf("%s%d.%d.%d", prefix, major, minor, patch)
 }
 
+// ParseBumpType maps a user input string to a canonical bump type.
+// Single-char keys are case-sensitive (M=major, m=minor, p/P=patch).
+// Full words are accepted with initial-cap variants (e.g. "Major", "Patch").
+func ParseBumpType(input string) (string, error) {
+	switch input {
+	case "M", "major", "Major":
+		return "major", nil
+	case "m", "minor", "Minor":
+		return "minor", nil
+	case "p", "P", "patch", "Patch":
+		return "patch", nil
+	default:
+		return "", fmt.Errorf("invalid bump type: %q (use M=major, m=minor, p=patch)", input)
+	}
+}
+
 // HasTagsWithDifferentPrefix reports whether the remote has tags but none of
 // them match prefix. This is the onboarding mismatch scenario: the repo uses a
 // tagging convention (e.g. "release-") that differs from the configured prefix

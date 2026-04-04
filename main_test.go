@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,35 @@ import (
 // makeReader wraps a string as a bufio.Reader for use as fake stdin.
 func makeReader(input string) *bufio.Reader {
 	return bufio.NewReader(strings.NewReader(input))
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// flag mutual exclusion — CLI level
+// ──────────────────────────────────────────────────────────────────────────────
+
+func TestMutualExclusionFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"overwrite+major", []string{"--overwrite", "--major"}},
+		{"overwrite+minor", []string{"--overwrite", "--minor"}},
+		{"overwrite+patch", []string{"--overwrite", "--patch"}},
+		{"major+minor", []string{"--major", "--minor"}},
+		{"major+patch", []string{"--major", "--patch"}},
+		{"minor+patch", []string{"--minor", "--patch"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := newRootCmd()
+			cmd.SetArgs(tc.args)
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			if err := cmd.Execute(); err == nil {
+				t.Errorf("expected error for args %v, got nil", tc.args)
+			}
+		})
+	}
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

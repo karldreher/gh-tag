@@ -258,7 +258,7 @@ func runPrefixCmd(editFlag bool) error {
 	return nil
 }
 
-func main() {
+func newRootCmd() *cobra.Command {
 	var major, minor, patch, confirm, overwrite bool
 	rootCmd := &cobra.Command{
 		Use:   "gh-tag",
@@ -285,9 +285,12 @@ func main() {
 	prefixCmd.Flags().BoolVar(&edit, "edit", false, "interactively set the tag prefix")
 
 	rootCmd.AddCommand(prefixCmd)
-
 	rootCmd.SilenceErrors = true
-	if err := rootCmd.Execute(); err != nil {
+	return rootCmd
+}
+
+func main() {
+	if err := newRootCmd().Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

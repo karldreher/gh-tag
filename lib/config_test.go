@@ -98,6 +98,26 @@ func TestLoadConfig_WrongFieldType(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_ReadError(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	// Create config.json as a directory — ReadFile will fail with a
+	// non-IsNotExist error, exercising the "reading config file" branch.
+	configPath := filepath.Join(tmpDir, ".gh-tag", "config.json")
+	if err := os.MkdirAll(configPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadConfig()
+	if err == nil {
+		t.Error("expected error when config.json is a directory")
+	}
+	if !strings.Contains(err.Error(), "reading config file") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
 func TestSaveConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
@@ -113,6 +133,47 @@ func TestSaveConfig(t *testing.T) {
 	}
 	if loaded.Prefix != cfg.Prefix {
 		t.Errorf("round-trip mismatch: got %q, want %q", loaded.Prefix, cfg.Prefix)
+	}
+}
+
+func TestLoadConfig_MissingOverwriteConfirmed(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	configDir := filepath.Join(tmpDir, ".gh-tag")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Config file written without overwrite_confirmed — must deserialize to false.
+	if err := os.WriteFile(filepath.Join(configDir, "config.json"), []byte(`{"prefix":"v"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() failed: %v", err)
+	}
+	if cfg.OverwriteConfirmed != false {
+		t.Errorf("expected OverwriteConfirmed=false for config without field, got true")
+	}
+}
+
+func TestSaveConfig_WriteError(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	// Create config.json as a directory so MkdirAll succeeds but WriteFile fails.
+	configPath := filepath.Join(tmpDir, ".gh-tag", "config.json")
+	if err := os.MkdirAll(configPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	err := SaveConfig(Config{Prefix: "v"})
+	if err == nil {
+		t.Error("expected error when config.json is a directory")
+	}
+	if !strings.Contains(err.Error(), "writing config file") {
+		t.Errorf("unexpected error message: %v", err)
 	}
 }
 

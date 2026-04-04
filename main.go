@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -71,31 +72,11 @@ func confirmAction(reader *bufio.Reader, skipConfirm bool, prompt string) (bool,
 	return input == "y" || input == "yes", nil
 }
 
-// validateBumpFlags returns an error if more than one of the bump flags is set.
-func validateBumpFlags(majorFlag, minorFlag, patchFlag bool) error {
-	count := 0
-	for _, f := range []bool{majorFlag, minorFlag, patchFlag} {
-		if f {
-			count++
-		}
-	}
-	if count > 1 {
-		return fmt.Errorf("--major, --minor, and --patch are mutually exclusive")
-	}
-	return nil
-}
-
-// runTagCmd is the handler for the root `gh tag` command.
-func runTagCmd(cmd *cobra.Command, args []string) error {
-	majorFlag, _ := cmd.Flags().GetBool("major")
-	minorFlag, _ := cmd.Flags().GetBool("minor")
-	patchFlag, _ := cmd.Flags().GetBool("patch")
-	skipConfirm, _ := cmd.Flags().GetBool("confirm")
-
-	if err := validateBumpFlags(majorFlag, minorFlag, patchFlag); err != nil {
-		return err
-	}
-
+// runTagCmd implements the root `gh tag` command. It fetches remote tags,
+// determines the next version (or re-points the latest tag when overwriteFlag
+// is set), confirms with the user, then creates and pushes the tag.
+// Flag values are injected by the cobra closure in newRootCmd.
+func runTagCmd(majorFlag, minorFlag, patchFlag, skipConfirm, overwriteFlag bool) error {
 	prefix, err := effectivePrefix()
 	if err != nil {
 		return err
@@ -115,6 +96,69 @@ func runTagCmd(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	curMajor, curMinor, curPatch, found := lib.FindLatestTag(tags, prefix)
+
+	if overwriteFlag {
+		if !found {
+			return fmt.Errorf("no existing tag found to overwrite")
+		}
+		currentTag := lib.FormatTag(prefix, curMajor, curMinor, curPatch)
+
+		currentRef, err := lib.ResolveTagRef(currentTag)
+		if err != nil {
+			return fmt.Errorf("resolving tag ref: %w", err)
+		}
+		headRef, err := lib.ResolveHead()
+		if err != nil {
+			return fmt.Errorf("resolving HEAD: %w", err)
+		}
+
+		fmt.Printf("⚠️  Overwrite mode.\n")
+		fmt.Printf("   Tag:      %s\n", currentTag)
+		fmt.Printf("   Current:  %s (remote)\n", currentRef)
+		fmt.Printf("   New ref:  %s (HEAD)\n\n", headRef)
+
+		cfg, err := lib.LoadConfig()
+		if err != nil {
+			return fmt.Errorf("loading config: %w", err)
+		}
+		alreadyConfirmed := cfg.OverwriteConfirmed
+
+		if !skipConfirm || !alreadyConfirmed {
+			fmt.Println("This is a destructive operation. The remote tag will be force-pushed.")
+			fmt.Println()
+		}
+		if !alreadyConfirmed {
+			cfg.OverwriteConfirmed = true
+			if err := lib.SaveConfig(cfg); err != nil {
+				return fmt.Errorf("saving config: %w", err)
+			}
+		}
+
+		if !skipConfirm {
+			fmt.Printf("Type the tag name to confirm: ")
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				return fmt.Errorf("reading input: %w", err)
+			}
+			if strings.TrimSpace(line) != currentTag {
+				fmt.Println("Aborted: tag name did not match.")
+				return nil
+			}
+		}
+
+		if err := lib.OverwriteTag(currentTag); err != nil {
+			return err
+		}
+		if err := lib.ForcePushTag(currentTag); err != nil {
+			if errors.Is(err, lib.ErrPushImmutable) {
+				return fmt.Errorf("push rejected: the remote may have release immutability enabled\n  The local tag has been updated but the remote was not changed\n  To restore the original local tag: git tag -f %s %s", currentTag, currentRef)
+			}
+			return err
+		}
+
+		fmt.Printf("\n✅ Done! Tag %s overwritten and pushed.\n", currentTag)
+		return nil
+	}
 
 	var newTag string
 
@@ -179,10 +223,10 @@ func runTagCmd(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// runPrefixCmd is the handler for `gh tag prefix`.
-func runPrefixCmd(cmd *cobra.Command, args []string) error {
-	editFlag, _ := cmd.Flags().GetBool("edit")
-
+// runPrefixCmd implements the `gh tag prefix` subcommand. Without editFlag it
+// prints the current prefix; with editFlag it prompts the user for a new value
+// and persists it to ~/.gh-tag/config.json.
+func runPrefixCmd(editFlag bool) error {
 	current, err := effectivePrefix()
 	if err != nil {
 		return err
@@ -219,28 +263,43 @@ func runPrefixCmd(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func main() {
+// newRootCmd builds and returns the configured root cobra command, including
+// the prefix subcommand, all flag bindings, and mutual-exclusion constraints.
+// It is called by main and also by tests that drive the CLI directly.
+func newRootCmd() *cobra.Command {
+	var major, minor, patch, confirm, overwrite bool
 	rootCmd := &cobra.Command{
 		Use:   "gh-tag",
 		Short: "🏷️  The missing tag command.",
-		RunE:  runTagCmd,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runTagCmd(major, minor, patch, confirm, overwrite)
+		},
 	}
-	rootCmd.Flags().Bool("major", false, "bump major version")
-	rootCmd.Flags().Bool("minor", false, "bump minor version")
-	rootCmd.Flags().Bool("patch", false, "bump patch version")
-	rootCmd.Flags().Bool("confirm", false, "skip confirmation prompt")
+	rootCmd.Flags().BoolVar(&major, "major", false, "bump major version")
+	rootCmd.Flags().BoolVar(&minor, "minor", false, "bump minor version")
+	rootCmd.Flags().BoolVar(&patch, "patch", false, "bump patch version")
+	rootCmd.Flags().BoolVar(&confirm, "confirm", false, "skip confirmation prompt")
+	rootCmd.Flags().BoolVar(&overwrite, "overwrite", false, "overwrite the latest tag at HEAD")
+	rootCmd.MarkFlagsMutuallyExclusive("overwrite", "major", "minor", "patch")
 
+	var edit bool
 	prefixCmd := &cobra.Command{
 		Use:   "prefix",
 		Short: "View or set the tag prefix (default: v)",
-		RunE:  runPrefixCmd,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runPrefixCmd(edit)
+		},
 	}
-	prefixCmd.Flags().Bool("edit", false, "interactively set the tag prefix")
+	prefixCmd.Flags().BoolVar(&edit, "edit", false, "interactively set the tag prefix")
 
 	rootCmd.AddCommand(prefixCmd)
+	rootCmd.SilenceErrors = true
+	return rootCmd
+}
 
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
+func main() {
+	if err := newRootCmd().Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }

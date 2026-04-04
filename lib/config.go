@@ -14,6 +14,10 @@ type Config struct {
 	// When empty, callers should default to "v".
 	// Set via `gh tag prefix --edit`.
 	Prefix string `json:"prefix"`
+	// OverwriteConfirmed records that the user has acknowledged the risk of
+	// --overwrite at least once. When true, subsequent --confirm --overwrite
+	// invocations skip the one-time warning.
+	OverwriteConfirmed bool `json:"overwrite_confirmed"`
 }
 
 // ConfigPath returns the absolute path to the config file (~/.gh-tag/config.json).

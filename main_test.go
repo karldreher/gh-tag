@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,35 +15,29 @@ func makeReader(input string) *bufio.Reader {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// validateBumpFlags
+// flag mutual exclusion — CLI level
 // ──────────────────────────────────────────────────────────────────────────────
 
-func TestValidateBumpFlags(t *testing.T) {
+func TestMutualExclusionFlags(t *testing.T) {
 	tests := []struct {
-		name    string
-		major   bool
-		minor   bool
-		patch   bool
-		wantErr bool
+		name string
+		args []string
 	}{
-		{"none set", false, false, false, false},
-		{"major only", true, false, false, false},
-		{"minor only", false, true, false, false},
-		{"patch only", false, false, true, false},
-		{"major+minor", true, true, false, true},
-		{"major+patch", true, false, true, true},
-		{"minor+patch", false, true, true, true},
-		{"all three", true, true, true, true},
+		{"overwrite+major", []string{"--overwrite", "--major"}},
+		{"overwrite+minor", []string{"--overwrite", "--minor"}},
+		{"overwrite+patch", []string{"--overwrite", "--patch"}},
+		{"major+minor", []string{"--major", "--minor"}},
+		{"major+patch", []string{"--major", "--patch"}},
+		{"minor+patch", []string{"--minor", "--patch"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validateBumpFlags(tc.major, tc.minor, tc.patch)
-			if (err != nil) != tc.wantErr {
-				t.Errorf("validateBumpFlags(%v,%v,%v) err=%v, wantErr=%v",
-					tc.major, tc.minor, tc.patch, err, tc.wantErr)
-			}
-			if err != nil && !strings.Contains(err.Error(), "mutually exclusive") {
-				t.Errorf("unexpected error message: %v", err)
+			cmd := newRootCmd()
+			cmd.SetArgs(tc.args)
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			if err := cmd.Execute(); err == nil {
+				t.Errorf("expected error for args %v, got nil", tc.args)
 			}
 		})
 	}
@@ -118,6 +113,16 @@ func TestReadBumpType_Interactive(t *testing.T) {
 	}
 }
 
+func TestReadBumpType_ReaderError(t *testing.T) {
+	// Empty reader produces EOF before the newline delimiter, triggering the
+	// ReadString error branch.
+	r := makeReader("")
+	_, err := readBumpType(r, false, false, false)
+	if err == nil {
+		t.Fatal("expected error from empty reader")
+	}
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // confirmAction
 // ──────────────────────────────────────────────────────────────────────────────
@@ -155,6 +160,14 @@ func TestConfirmAction(t *testing.T) {
 	}
 }
 
+func TestConfirmAction_ReaderError(t *testing.T) {
+	r := makeReader("")
+	_, err := confirmAction(r, false, "prompt: ")
+	if err == nil {
+		t.Fatal("expected error from empty reader")
+	}
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // effectivePrefix
 // ──────────────────────────────────────────────────────────────────────────────
@@ -189,6 +202,19 @@ func TestEffectivePrefix(t *testing.T) {
 		}
 		if got != "release-" {
 			t.Errorf("got %q, want %q", got, "release-")
+		}
+	})
+
+	t.Run("load error returns error", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		t.Setenv("HOME", tmpDir)
+		// config.json as a directory forces LoadConfig to fail
+		if err := os.MkdirAll(filepath.Join(tmpDir, ".gh-tag", "config.json"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		_, err := effectivePrefix()
+		if err == nil {
+			t.Error("expected error")
 		}
 	})
 

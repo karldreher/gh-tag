@@ -1,6 +1,7 @@
 package lib
 
 import (
+	"errors"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -657,6 +658,151 @@ func TestListRemoteTags_LargeOutput(t *testing.T) {
 // that already has tags, but those tags use a different prefix than configured.
 // Without detection, the tool silently reports "no tags found" and would create
 // an unrelated tag series — a confusing first experience.
+// ──────────────────────────────────────────────────────────────────────────────
+
+// ──────────────────────────────────────────────────────────────────────────────
+// ResolveTagRef — mocked tests
+// ──────────────────────────────────────────────────────────────────────────────
+
+func TestResolveTagRef_Success(t *testing.T) {
+	old := resolveTagRefCmd
+	defer func() { resolveTagRefCmd = old }()
+	resolveTagRefCmd = func(tag string) *exec.Cmd {
+		return exec.Command("printf", "abc1234def5678901234567890123456789012345\n")
+	}
+
+	sha, err := ResolveTagRef("v1.0.0")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sha != "abc1234" {
+		t.Errorf("got %q, want %q", sha, "abc1234")
+	}
+}
+
+func TestResolveTagRef_Failure(t *testing.T) {
+	old := resolveTagRefCmd
+	defer func() { resolveTagRefCmd = old }()
+	resolveTagRefCmd = func(tag string) *exec.Cmd { return exec.Command("false") }
+
+	_, err := ResolveTagRef("v1.0.0")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "resolving ref for tag") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// ResolveHead — mocked tests
+// ──────────────────────────────────────────────────────────────────────────────
+
+func TestResolveHead_Success(t *testing.T) {
+	old := resolveHeadCmd
+	defer func() { resolveHeadCmd = old }()
+	resolveHeadCmd = func() *exec.Cmd {
+		return exec.Command("printf", "def5678901234567890123456789012345678901\n")
+	}
+
+	sha, err := ResolveHead()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sha != "def5678" {
+		t.Errorf("got %q, want %q", sha, "def5678")
+	}
+}
+
+func TestResolveHead_Failure(t *testing.T) {
+	old := resolveHeadCmd
+	defer func() { resolveHeadCmd = old }()
+	resolveHeadCmd = func() *exec.Cmd { return exec.Command("false") }
+
+	_, err := ResolveHead()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "resolving HEAD") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// OverwriteTag — mocked tests
+// ──────────────────────────────────────────────────────────────────────────────
+
+func TestOverwriteTag_Success(t *testing.T) {
+	old := overwriteTagCmd
+	defer func() { overwriteTagCmd = old }()
+	overwriteTagCmd = func(tag string) *exec.Cmd { return exec.Command("true") }
+
+	if err := OverwriteTag("v1.0.0"); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestOverwriteTag_Failure(t *testing.T) {
+	old := overwriteTagCmd
+	defer func() { overwriteTagCmd = old }()
+	overwriteTagCmd = func(tag string) *exec.Cmd { return exec.Command("false") }
+
+	err := OverwriteTag("v1.0.0")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "overwriting tag") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// ForcePushTag — mocked tests
+// ──────────────────────────────────────────────────────────────────────────────
+
+func TestForcePushTag_Success(t *testing.T) {
+	old := forcePushTagCmd
+	defer func() { forcePushTagCmd = old }()
+	forcePushTagCmd = func(tag string) *exec.Cmd { return exec.Command("true") }
+
+	if err := ForcePushTag("v1.0.0"); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestForcePushTag_Immutability(t *testing.T) {
+	old := forcePushTagCmd
+	defer func() { forcePushTagCmd = old }()
+	forcePushTagCmd = func(tag string) *exec.Cmd {
+		return exec.Command("sh", "-c", "echo 'remote: error: GH013: Repository rule violations found' >&2; exit 1")
+	}
+
+	err := ForcePushTag("v1.0.0")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, ErrPushImmutable) {
+		t.Errorf("expected ErrPushImmutable, got: %v", err)
+	}
+}
+
+func TestForcePushTag_OtherFailure(t *testing.T) {
+	old := forcePushTagCmd
+	defer func() { forcePushTagCmd = old }()
+	forcePushTagCmd = func(tag string) *exec.Cmd { return exec.Command("false") }
+
+	err := ForcePushTag("v1.0.0")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if errors.Is(err, ErrPushImmutable) {
+		t.Error("generic failure should not return ErrPushImmutable")
+	}
+	if !strings.Contains(err.Error(), "force-pushing tag") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 
 func TestHasTagsWithDifferentPrefix(t *testing.T) {

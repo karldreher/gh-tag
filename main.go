@@ -72,7 +72,10 @@ func confirmAction(reader *bufio.Reader, skipConfirm bool, prompt string) (bool,
 	return input == "y" || input == "yes", nil
 }
 
-// runTagCmd is the handler for the root `gh tag` command.
+// runTagCmd implements the root `gh tag` command. It fetches remote tags,
+// determines the next version (or re-points the latest tag when overwriteFlag
+// is set), confirms with the user, then creates and pushes the tag.
+// Flag values are injected by the cobra closure in newRootCmd.
 func runTagCmd(majorFlag, minorFlag, patchFlag, skipConfirm, overwriteFlag bool) error {
 	prefix, err := effectivePrefix()
 	if err != nil {
@@ -220,7 +223,9 @@ func runTagCmd(majorFlag, minorFlag, patchFlag, skipConfirm, overwriteFlag bool)
 	return nil
 }
 
-// runPrefixCmd is the handler for `gh tag prefix`.
+// runPrefixCmd implements the `gh tag prefix` subcommand. Without editFlag it
+// prints the current prefix; with editFlag it prompts the user for a new value
+// and persists it to ~/.gh-tag/config.json.
 func runPrefixCmd(editFlag bool) error {
 	current, err := effectivePrefix()
 	if err != nil {
@@ -258,6 +263,9 @@ func runPrefixCmd(editFlag bool) error {
 	return nil
 }
 
+// newRootCmd builds and returns the configured root cobra command, including
+// the prefix subcommand, all flag bindings, and mutual-exclusion constraints.
+// It is called by main and also by tests that drive the CLI directly.
 func newRootCmd() *cobra.Command {
 	var major, minor, patch, confirm, overwrite bool
 	rootCmd := &cobra.Command{

@@ -72,25 +72,6 @@ func confirmAction(reader *bufio.Reader, skipConfirm bool, prompt string) (bool,
 	return input == "y" || input == "yes", nil
 }
 
-// validateActionFlags returns an error if flag combinations are invalid:
-// --overwrite is mutually exclusive with --major/--minor/--patch, and at most
-// one bump flag may be set at a time.
-func validateActionFlags(majorFlag, minorFlag, patchFlag, overwriteFlag bool) error {
-	if overwriteFlag && (majorFlag || minorFlag || patchFlag) {
-		return fmt.Errorf("--overwrite is mutually exclusive with --major, --minor, and --patch")
-	}
-	count := 0
-	for _, f := range []bool{majorFlag, minorFlag, patchFlag} {
-		if f {
-			count++
-		}
-	}
-	if count > 1 {
-		return fmt.Errorf("--major, --minor, and --patch are mutually exclusive")
-	}
-	return nil
-}
-
 // runTagCmd is the handler for the root `gh tag` command.
 func runTagCmd(cmd *cobra.Command, args []string) error {
 	majorFlag, _ := cmd.Flags().GetBool("major")
@@ -98,10 +79,6 @@ func runTagCmd(cmd *cobra.Command, args []string) error {
 	patchFlag, _ := cmd.Flags().GetBool("patch")
 	skipConfirm, _ := cmd.Flags().GetBool("confirm")
 	overwriteFlag, _ := cmd.Flags().GetBool("overwrite")
-
-	if err := validateActionFlags(majorFlag, minorFlag, patchFlag, overwriteFlag); err != nil {
-		return err
-	}
 
 	prefix, err := effectivePrefix()
 	if err != nil {
@@ -300,6 +277,7 @@ func main() {
 	rootCmd.Flags().Bool("patch", false, "bump patch version")
 	rootCmd.Flags().Bool("confirm", false, "skip confirmation prompt")
 	rootCmd.Flags().Bool("overwrite", false, "overwrite the latest tag at HEAD")
+	rootCmd.MarkFlagsMutuallyExclusive("overwrite", "major", "minor", "patch")
 
 	prefixCmd := &cobra.Command{
 		Use:   "prefix",

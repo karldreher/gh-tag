@@ -14,47 +14,6 @@ func makeReader(input string) *bufio.Reader {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// validateActionFlags
-// ──────────────────────────────────────────────────────────────────────────────
-
-func TestValidateActionFlags(t *testing.T) {
-	tests := []struct {
-		name      string
-		major     bool
-		minor     bool
-		patch     bool
-		overwrite bool
-		wantErr   bool
-	}{
-		{"none set", false, false, false, false, false},
-		{"major only", true, false, false, false, false},
-		{"minor only", false, true, false, false, false},
-		{"patch only", false, false, true, false, false},
-		{"overwrite only", false, false, false, true, false},
-		{"major+minor", true, true, false, false, true},
-		{"major+patch", true, false, true, false, true},
-		{"minor+patch", false, true, true, false, true},
-		{"all three bumps", true, true, true, false, true},
-		{"overwrite+major", true, false, false, true, true},
-		{"overwrite+minor", false, true, false, true, true},
-		{"overwrite+patch", false, false, true, true, true},
-		{"overwrite+all bumps", true, true, true, true, true},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			err := validateActionFlags(tc.major, tc.minor, tc.patch, tc.overwrite)
-			if (err != nil) != tc.wantErr {
-				t.Errorf("validateActionFlags(%v,%v,%v,%v) err=%v, wantErr=%v",
-					tc.major, tc.minor, tc.patch, tc.overwrite, err, tc.wantErr)
-			}
-			if err != nil && !strings.Contains(err.Error(), "mutually exclusive") {
-				t.Errorf("unexpected error message: %v", err)
-			}
-		})
-	}
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
 // readBumpType
 // ──────────────────────────────────────────────────────────────────────────────
 

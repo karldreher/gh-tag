@@ -24,7 +24,12 @@ jobs:
       - name: Run tests
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: go test ./...
+        run: |
+          go test ./... -coverprofile=coverage.out -covermode=atomic
+          echo "## Test Coverage" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=coverage.out >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: build
         run: go build .

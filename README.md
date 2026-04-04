@@ -43,6 +43,24 @@ gh tag --patch --confirm
 
 `--confirm` bypasses the final `y/N` prompt. Combined with a bump flag, the command is fully non-interactive.
 
+### Overwrite the latest tag
+
+```
+gh tag --overwrite
+gh tag --overwrite --confirm
+```
+
+Re-points the latest semver tag to the current `HEAD`. Use this after amending a commit or force-pushing a branch when you need to move the tag to the new ref before release.
+
+Before doing anything, the command shows the tag name, the commit it currently points to, and the new `HEAD` ref. You must type the tag name exactly to confirm — a mis-type aborts.
+
+`--confirm --overwrite` skips the interactive prompt. The first time this combination is used, a one-time warning is shown and `overwrite_confirmed: true` is saved to `~/.gh-tag/config.json`. Subsequent invocations skip the warning silently.
+
+`--overwrite` is mutually exclusive with `--major`, `--minor`, and `--patch`.
+
+> [!WARNING]
+> This runs `git tag -f` and `git push --force origin <tag>`, both of which are destructive and hard to reverse. Repositories with [release immutability](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository) enabled will reject the force-push — the local tag will be updated but the remote will not.
+
 ### View or change the tag prefix
 
 ```
@@ -69,7 +87,8 @@ Config is stored at `~/.gh-tag/config.json`:
 
 ```json
 {
-  "prefix": "v"
+  "prefix": "v",
+  "overwrite_confirmed": false
 }
 ```
 
@@ -95,6 +114,23 @@ $ gh tag
 🚀 Proceed? [y/N]: y
 
 ✅ Done! Tag v1.2.4 created and pushed.
+```
+
+```
+$ gh tag --overwrite
+🏷️  gh tag — The missing command.
+
+📡 Fetching remote tags...
+⚠️  Overwrite mode.
+   Tag:      v1.2.3
+   Current:  abc1234 (remote)
+   New ref:  def5678 (HEAD)
+
+This is a destructive operation. The remote tag will be force-pushed.
+
+Type the tag name to confirm: v1.2.3
+
+✅ Done! Tag v1.2.3 overwritten and pushed.
 ```
 
 ```

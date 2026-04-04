@@ -98,6 +98,26 @@ func TestLoadConfig_WrongFieldType(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_ReadError(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	// Create config.json as a directory — ReadFile will fail with a
+	// non-IsNotExist error, exercising the "reading config file" branch.
+	configPath := filepath.Join(tmpDir, ".gh-tag", "config.json")
+	if err := os.MkdirAll(configPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadConfig()
+	if err == nil {
+		t.Error("expected error when config.json is a directory")
+	}
+	if !strings.Contains(err.Error(), "reading config file") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
 func TestSaveConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
@@ -135,6 +155,25 @@ func TestLoadConfig_MissingOverwriteConfirmed(t *testing.T) {
 	}
 	if cfg.OverwriteConfirmed != false {
 		t.Errorf("expected OverwriteConfirmed=false for config without field, got true")
+	}
+}
+
+func TestSaveConfig_WriteError(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	// Create config.json as a directory so MkdirAll succeeds but WriteFile fails.
+	configPath := filepath.Join(tmpDir, ".gh-tag", "config.json")
+	if err := os.MkdirAll(configPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	err := SaveConfig(Config{Prefix: "v"})
+	if err == nil {
+		t.Error("expected error when config.json is a directory")
+	}
+	if !strings.Contains(err.Error(), "writing config file") {
+		t.Errorf("unexpected error message: %v", err)
 	}
 }
 

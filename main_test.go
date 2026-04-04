@@ -83,6 +83,16 @@ func TestReadBumpType_Interactive(t *testing.T) {
 	}
 }
 
+func TestReadBumpType_ReaderError(t *testing.T) {
+	// Empty reader produces EOF before the newline delimiter, triggering the
+	// ReadString error branch.
+	r := makeReader("")
+	_, err := readBumpType(r, false, false, false)
+	if err == nil {
+		t.Fatal("expected error from empty reader")
+	}
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // confirmAction
 // ──────────────────────────────────────────────────────────────────────────────
@@ -120,6 +130,14 @@ func TestConfirmAction(t *testing.T) {
 	}
 }
 
+func TestConfirmAction_ReaderError(t *testing.T) {
+	r := makeReader("")
+	_, err := confirmAction(r, false, "prompt: ")
+	if err == nil {
+		t.Fatal("expected error from empty reader")
+	}
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // effectivePrefix
 // ──────────────────────────────────────────────────────────────────────────────
@@ -154,6 +172,19 @@ func TestEffectivePrefix(t *testing.T) {
 		}
 		if got != "release-" {
 			t.Errorf("got %q, want %q", got, "release-")
+		}
+	})
+
+	t.Run("load error returns error", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		t.Setenv("HOME", tmpDir)
+		// config.json as a directory forces LoadConfig to fail
+		if err := os.MkdirAll(filepath.Join(tmpDir, ".gh-tag", "config.json"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		_, err := effectivePrefix()
+		if err == nil {
+			t.Error("expected error")
 		}
 	})
 

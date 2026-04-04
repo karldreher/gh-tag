@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -71,8 +72,13 @@ func confirmAction(reader *bufio.Reader, skipConfirm bool, prompt string) (bool,
 	return input == "y" || input == "yes", nil
 }
 
-// validateBumpFlags returns an error if more than one of the bump flags is set.
-func validateBumpFlags(majorFlag, minorFlag, patchFlag bool) error {
+// validateActionFlags returns an error if flag combinations are invalid:
+// --overwrite is mutually exclusive with --major/--minor/--patch, and at most
+// one bump flag may be set at a time.
+func validateActionFlags(majorFlag, minorFlag, patchFlag, overwriteFlag bool) error {
+	if overwriteFlag && (majorFlag || minorFlag || patchFlag) {
+		return fmt.Errorf("--overwrite is mutually exclusive with --major, --minor, and --patch")
+	}
 	count := 0
 	for _, f := range []bool{majorFlag, minorFlag, patchFlag} {
 		if f {
@@ -91,8 +97,9 @@ func runTagCmd(cmd *cobra.Command, args []string) error {
 	minorFlag, _ := cmd.Flags().GetBool("minor")
 	patchFlag, _ := cmd.Flags().GetBool("patch")
 	skipConfirm, _ := cmd.Flags().GetBool("confirm")
+	overwriteFlag, _ := cmd.Flags().GetBool("overwrite")
 
-	if err := validateBumpFlags(majorFlag, minorFlag, patchFlag); err != nil {
+	if err := validateActionFlags(majorFlag, minorFlag, patchFlag, overwriteFlag); err != nil {
 		return err
 	}
 
@@ -115,6 +122,69 @@ func runTagCmd(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	curMajor, curMinor, curPatch, found := lib.FindLatestTag(tags, prefix)
+
+	if overwriteFlag {
+		if !found {
+			return fmt.Errorf("no existing tag found to overwrite")
+		}
+		currentTag := lib.FormatTag(prefix, curMajor, curMinor, curPatch)
+
+		currentRef, err := lib.ResolveTagRef(currentTag)
+		if err != nil {
+			return fmt.Errorf("resolving tag ref: %w", err)
+		}
+		headRef, err := lib.ResolveHead()
+		if err != nil {
+			return fmt.Errorf("resolving HEAD: %w", err)
+		}
+
+		fmt.Printf("⚠️  Overwrite mode.\n")
+		fmt.Printf("   Tag:      %s\n", currentTag)
+		fmt.Printf("   Current:  %s (remote)\n", currentRef)
+		fmt.Printf("   New ref:  %s (HEAD)\n\n", headRef)
+
+		cfg, err := lib.LoadConfig()
+		if err != nil {
+			return fmt.Errorf("loading config: %w", err)
+		}
+		alreadyConfirmed := cfg.OverwriteConfirmed
+
+		if !skipConfirm || !alreadyConfirmed {
+			fmt.Println("This is a destructive operation. The remote tag will be force-pushed.")
+			fmt.Println()
+		}
+		if !alreadyConfirmed {
+			cfg.OverwriteConfirmed = true
+			if err := lib.SaveConfig(cfg); err != nil {
+				return fmt.Errorf("saving config: %w", err)
+			}
+		}
+
+		if !skipConfirm {
+			fmt.Printf("Type the tag name to confirm: ")
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				return fmt.Errorf("reading input: %w", err)
+			}
+			if strings.TrimSpace(line) != currentTag {
+				fmt.Println("Aborted: tag name did not match.")
+				return nil
+			}
+		}
+
+		if err := lib.OverwriteTag(currentTag); err != nil {
+			return err
+		}
+		if err := lib.ForcePushTag(currentTag); err != nil {
+			if errors.Is(err, lib.ErrPushImmutable) {
+				return fmt.Errorf("push rejected: the remote may have release immutability enabled\n  The local tag has been updated but the remote was not changed\n  To restore the original local tag: git tag -f %s %s", currentTag, currentRef)
+			}
+			return err
+		}
+
+		fmt.Printf("\n✅ Done! Tag %s overwritten and pushed.\n", currentTag)
+		return nil
+	}
 
 	var newTag string
 
@@ -229,6 +299,7 @@ func main() {
 	rootCmd.Flags().Bool("minor", false, "bump minor version")
 	rootCmd.Flags().Bool("patch", false, "bump patch version")
 	rootCmd.Flags().Bool("confirm", false, "skip confirmation prompt")
+	rootCmd.Flags().Bool("overwrite", false, "overwrite the latest tag at HEAD")
 
 	prefixCmd := &cobra.Command{
 		Use:   "prefix",

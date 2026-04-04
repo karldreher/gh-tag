@@ -3,6 +3,7 @@ package lib
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strconv"
@@ -197,6 +198,85 @@ func PushTag(tag string) error {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("pushing tag %s: %w (output: %s)", tag, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// ErrPushImmutable is returned by ForcePushTag when the remote rejects the
+// force-push due to release immutability being enabled on the repository.
+var ErrPushImmutable = errors.New("remote rejected force-push: release immutability enabled")
+
+// resolveTagRefCmd resolves a tag to its commit SHA. Replaceable in tests.
+var resolveTagRefCmd = func(tag string) *exec.Cmd {
+	return exec.Command("git", "rev-list", "-n", "1", tag)
+}
+
+// ResolveTagRef returns the short (7-char) commit SHA that tag points to.
+func ResolveTagRef(tag string) (string, error) {
+	cmd := resolveTagRefCmd(tag)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("resolving ref for tag %s: %w", tag, err)
+	}
+	sha := strings.TrimSpace(string(out))
+	if len(sha) >= 7 {
+		sha = sha[:7]
+	}
+	return sha, nil
+}
+
+// resolveHeadCmd resolves HEAD to its commit SHA. Replaceable in tests.
+var resolveHeadCmd = func() *exec.Cmd {
+	return exec.Command("git", "rev-parse", "HEAD")
+}
+
+// ResolveHead returns the short (7-char) commit SHA of HEAD.
+func ResolveHead() (string, error) {
+	cmd := resolveHeadCmd()
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("resolving HEAD: %w", err)
+	}
+	sha := strings.TrimSpace(string(out))
+	if len(sha) >= 7 {
+		sha = sha[:7]
+	}
+	return sha, nil
+}
+
+// overwriteTagCmd is the factory for git tag -f. Replaceable in tests.
+var overwriteTagCmd = func(tag string) *exec.Cmd {
+	return exec.Command("git", "tag", "-f", tag)
+}
+
+// OverwriteTag force-updates a local tag to point at the current HEAD.
+func OverwriteTag(tag string) error {
+	cmd := overwriteTagCmd(tag)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("overwriting tag %s: %w (output: %s)", tag, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// forcePushTagCmd is the factory for git push --force of a tag. Replaceable in tests.
+var forcePushTagCmd = func(tag string) *exec.Cmd {
+	return exec.Command("git", "push", "--force", "origin", tag)
+}
+
+// ForcePushTag force-pushes a local tag to origin. If the push is rejected due
+// to release immutability, it returns ErrPushImmutable (use errors.Is to check).
+func ForcePushTag(tag string) error {
+	cmd := forcePushTagCmd(tag)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err != nil {
+		errText := stderr.String()
+		if strings.Contains(errText, "GH013") || strings.Contains(errText, "Repository rule violations") {
+			return ErrPushImmutable
+		}
+		return fmt.Errorf("force-pushing tag %s: %w (output: %s)", tag, err, strings.TrimSpace(errText))
 	}
 	return nil
 }

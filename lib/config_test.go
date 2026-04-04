@@ -116,6 +116,28 @@ func TestSaveConfig(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_MissingOverwriteConfirmed(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	configDir := filepath.Join(tmpDir, ".gh-tag")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Config file written without overwrite_confirmed — must deserialize to false.
+	if err := os.WriteFile(filepath.Join(configDir, "config.json"), []byte(`{"prefix":"v"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() failed: %v", err)
+	}
+	if cfg.OverwriteConfirmed != false {
+		t.Errorf("expected OverwriteConfirmed=false for config without field, got true")
+	}
+}
+
 func TestSaveConfig_CreatesDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)

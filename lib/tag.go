@@ -170,9 +170,9 @@ func SortTags(tags []string, prefix string, ascending bool) []string {
 		}
 		return a.patch > b.patch
 	})
-	result := make([]string, len(entries))
-	for i, e := range entries {
-		result[i] = e.name
+	result := make([]string, 0, len(entries))
+	for _, e := range entries {
+		result = append(result, e.name)
 	}
 	return result
 }

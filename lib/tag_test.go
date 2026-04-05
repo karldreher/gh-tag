@@ -948,3 +948,87 @@ func TestParseBumpType(t *testing.T) {
 	}
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// SortTags
+// ──────────────────────────────────────────────────────────────────────────────
+
+func TestSortTags(t *testing.T) {
+	tests := []struct {
+		name      string
+		tags      []string
+		prefix    string
+		ascending bool
+		want      []string
+	}{
+		{
+			name:   "nil input returns empty slice",
+			tags:   nil,
+			prefix: "v",
+			want:   []string{},
+		},
+		{
+			name:   "empty input returns empty slice",
+			tags:   []string{},
+			prefix: "v",
+			want:   []string{},
+		},
+		{
+			name:   "invalid-only tags returns empty slice",
+			tags:   []string{"not-a-tag", "v1.0", "v1.0.0-beta"},
+			prefix: "v",
+			want:   []string{},
+		},
+		{
+			name:   "single valid tag",
+			tags:   []string{"v1.2.3"},
+			prefix: "v",
+			want:   []string{"v1.2.3"},
+		},
+		{
+			name:   "multiple tags descending",
+			tags:   []string{"v1.0.0", "v2.0.0", "v1.2.0"},
+			prefix: "v",
+			want:   []string{"v2.0.0", "v1.2.0", "v1.0.0"},
+		},
+		{
+			name:      "multiple tags ascending",
+			tags:      []string{"v2.0.0", "v1.0.0", "v1.2.0"},
+			prefix:    "v",
+			ascending: true,
+			want:      []string{"v1.0.0", "v1.2.0", "v2.0.0"},
+		},
+		{
+			name:   "numeric ordering not lexicographic descending",
+			tags:   []string{"v1.0.9", "v1.0.10", "v1.0.2"},
+			prefix: "v",
+			want:   []string{"v1.0.10", "v1.0.9", "v1.0.2"},
+		},
+		{
+			name:   "mixed valid and invalid drops invalid",
+			tags:   []string{"v1.0.0", "not-valid", "v2.0.0", "v1.0.0-beta"},
+			prefix: "v",
+			want:   []string{"v2.0.0", "v1.0.0"},
+		},
+		{
+			name:   "custom prefix only matches prefix",
+			tags:   []string{"release-1.0.0", "v1.0.0", "release-2.0.0"},
+			prefix: "release-",
+			want:   []string{"release-2.0.0", "release-1.0.0"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := SortTags(tc.tags, tc.prefix, tc.ascending)
+			if len(got) != len(tc.want) {
+				t.Fatalf("SortTags() len=%d, want %d; got=%v", len(got), len(tc.want), got)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("SortTags()[%d] = %q, want %q", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+

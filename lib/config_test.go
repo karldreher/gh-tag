@@ -195,3 +195,75 @@ func TestSaveConfig_CreatesDirectory(t *testing.T) {
 		t.Error("SaveConfig() did not create the config directory")
 	}
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// EffectivePrefix
+// ──────────────────────────────────────────────────────────────────────────────
+
+func TestEffectivePrefix(t *testing.T) {
+	t.Run("no config returns v", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		got, err := EffectivePrefix()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "v" {
+			t.Errorf("got %q, want %q", got, "v")
+		}
+	})
+
+	t.Run("config with prefix returns it", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		t.Setenv("HOME", tmpDir)
+		if err := os.MkdirAll(filepath.Join(tmpDir, ".gh-tag"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(tmpDir, ".gh-tag", "config.json"),
+			[]byte(`{"prefix":"release-"}`), 0644,
+		); err != nil {
+			t.Fatal(err)
+		}
+		got, err := EffectivePrefix()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "release-" {
+			t.Errorf("got %q, want %q", got, "release-")
+		}
+	})
+
+	t.Run("load error returns error", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		t.Setenv("HOME", tmpDir)
+		// config.json as a directory forces LoadConfig to fail
+		if err := os.MkdirAll(filepath.Join(tmpDir, ".gh-tag", "config.json"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		_, err := EffectivePrefix()
+		if err == nil {
+			t.Error("expected error")
+		}
+	})
+
+	t.Run("config with empty prefix returns v", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		t.Setenv("HOME", tmpDir)
+		if err := os.MkdirAll(filepath.Join(tmpDir, ".gh-tag"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(tmpDir, ".gh-tag", "config.json"),
+			[]byte(`{"prefix":""}`), 0644,
+		); err != nil {
+			t.Fatal(err)
+		}
+		got, err := EffectivePrefix()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "v" {
+			t.Errorf("got %q, want %q", got, "v")
+		}
+	})
+}

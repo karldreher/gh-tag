@@ -13,6 +13,11 @@ func TestListCmd_Flags(t *testing.T) {
 	}{
 		{"no flags", []string{"list"}, false},
 		{"ascending flag", []string{"list", "--ascending"}, false},
+		{"descending flag", []string{"list", "--descending"}, false},
+		{"ascending and descending", []string{"list", "--ascending", "--descending"}, true},
+		{"limit flag", []string{"list", "--limit", "5"}, false},
+		// --web is intentionally not tested for the success case: it calls
+		// gh browse which opens a browser, making it unsafe to run in CI.
 		{"unknown flag", []string{"list", "--unknown"}, true},
 	}
 	for _, tc := range tests {

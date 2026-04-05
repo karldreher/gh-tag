@@ -26,7 +26,7 @@ func Execute() error {
 func newRootCmd() *cobra.Command {
 	var major, minor, patch, confirm, overwrite bool
 	cmd := &cobra.Command{
-		Use:           "gh-tag",
+		Use:           "gh tag",
 		Short:         "🏷️  The missing tag command.",
 		SilenceErrors: true,
 		RunE: func(_ *cobra.Command, _ []string) error {

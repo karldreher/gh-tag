@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/karldreher/gh-tag/lib"
@@ -30,6 +31,35 @@ func newViewCmd() *cobra.Command {
 	return cmd
 }
 
+// singleTag is a semver tag name that has been verified to be the only
+// matching tag in the repository. --web with no explicit argument requires
+// this guarantee: opening a releases page should be an unambiguous act —
+// the user must not be silently taken to a tag they did not intend.
+// Named arguments bypass this type entirely because the user already chose.
+type singleTag string
+
+// errNoSemverTags is returned by requireSingleTag when no semver tags exist.
+// It is a sentinel distinct from the >1-tag error so callers can exit 0
+// with an informational message rather than treating it as a failure.
+var errNoSemverTags = errors.New("no semver tags found")
+
+// requireSingleTag returns the one semver tag matching prefix in tags.
+// It errors if zero tags exist (errNoSemverTags) or if more than one exists,
+// enforcing that --web with no argument is always unambiguous.
+func requireSingleTag(tags []string, prefix string) (singleTag, error) {
+	matching := lib.SortTags(tags, prefix, false)
+	switch len(matching) {
+	case 0:
+		return "", errNoSemverTags
+	case 1:
+		return singleTag(matching[0]), nil
+	default:
+		return "", fmt.Errorf(
+			"%d semver tags exist; specify a tag name to avoid ambiguity (e.g. gh tag view %s --web)",
+			len(matching), matching[0])
+	}
+}
+
 // runViewCmd implements the `gh tag view` subcommand. With no arguments it
 // prints the latest semver tag and its commit SHA. With a tag name argument it
 // prints that specific tag and its commit SHA. With --web, opens the tag's
@@ -43,6 +73,26 @@ func runViewCmd(args []string, web bool) error {
 	tags, err := lib.ListRemoteTags()
 	if err != nil {
 		return err
+	}
+
+	if web && len(args) == 0 {
+		// --web with no argument must be unambiguous: if multiple tags exist the
+		// user must name one. requireSingleTag enforces this via the singleTag
+		// type, which is only constructible when exactly one tag is present.
+		tag, err := requireSingleTag(tags, prefix)
+		if errors.Is(err, errNoSemverTags) {
+			fmt.Println("No semver tags found.")
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		// The /releases/tag/<name> URL is used rather than /tree/<name> because it
+		// surfaces release notes and assets when a GitHub release exists for the tag.
+		// When no release exists, GitHub still serves the page and offers a prompt to
+		// create one — the URL is valid for any pushed tag regardless of release
+		// status. See: https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases
+		return openInBrowser("releases/tag/" + string(tag))
 	}
 
 	var tag string
@@ -68,16 +118,9 @@ func runViewCmd(args []string, web bool) error {
 		tag = target
 	}
 
-	// --web is checked after tag resolution because we need the tag name to
-	// build the URL. ResolveTagRef (a local git call) is intentionally skipped
-	// here — the SHA is not needed when opening the browser.
-	//
-	// The /releases/tag/<name> URL is used rather than /tree/<name> because it
-	// surfaces release notes and assets when a GitHub release exists for the tag.
-	// When no release exists, GitHub still serves the page and offers a prompt to
-	// create one — the URL is valid for any pushed tag regardless of release
-	// status. See: https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases
 	if web {
+		// Named argument: the user was explicit, no ambiguity constraint applies.
+		// ResolveTagRef is skipped — the SHA is not needed when opening the browser.
 		return openInBrowser("releases/tag/" + tag)
 	}
 

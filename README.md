@@ -22,6 +22,8 @@ gh tag view <tag>   # show a specific tag and its commit SHA
 gh tag prefix       # view or change the tag prefix (default: v)
 ```
 
+`gh tag view --web` opens the tag's GitHub releases page in the browser. When no tag argument is given, it requires exactly one semver tag in the repository — if multiple exist, specify one explicitly (e.g. `gh tag view v1.2.3 --web`).
+
 Run any command with `--help` for all available flags.
 
 ## Example

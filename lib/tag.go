@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -131,6 +132,49 @@ func ParseBumpType(input string) (string, error) {
 	default:
 		return "", fmt.Errorf("invalid bump type: %q (use M=major, m=minor, p=patch)", input)
 	}
+}
+
+// SortTags returns tag names filtered to valid semver entries matching prefix,
+// sorted by semantic version. Descending (newest first) by default;
+// ascending=true reverses the order. Invalid tags are silently dropped,
+// consistent with FindLatestTag.
+func SortTags(tags []string, prefix string, ascending bool) []string {
+	type entry struct {
+		name                string
+		major, minor, patch int
+	}
+	var entries []entry
+	for _, t := range tags {
+		major, minor, patch, ok := ParseVersion(t, prefix)
+		if !ok {
+			continue
+		}
+		entries = append(entries, entry{t, major, minor, patch})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		a, b := entries[i], entries[j]
+		if a.major != b.major {
+			if ascending {
+				return a.major < b.major
+			}
+			return a.major > b.major
+		}
+		if a.minor != b.minor {
+			if ascending {
+				return a.minor < b.minor
+			}
+			return a.minor > b.minor
+		}
+		if ascending {
+			return a.patch < b.patch
+		}
+		return a.patch > b.patch
+	})
+	result := make([]string, 0, len(entries))
+	for _, e := range entries {
+		result = append(result, e.name)
+	}
+	return result
 }
 
 // HasTagsWithDifferentPrefix reports whether the remote has tags but none of

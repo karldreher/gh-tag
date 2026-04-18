@@ -8,6 +8,8 @@ import (
 	"testing"
 )
 
+// TestConfigPath verifies that the config file path is rooted under HOME and
+// ends with .gh-tag/config.json.
 func TestConfigPath(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
@@ -24,6 +26,8 @@ func TestConfigPath(t *testing.T) {
 	}
 }
 
+// TestLoadConfig_FileNotExist verifies that a missing config file returns a
+// zero-value Config without error.
 func TestLoadConfig_FileNotExist(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
@@ -36,6 +40,8 @@ func TestLoadConfig_FileNotExist(t *testing.T) {
 	}
 }
 
+// TestLoadConfig_Valid verifies that a well-formed JSON config file is parsed
+// into the expected Config fields.
 func TestLoadConfig_Valid(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
@@ -58,6 +64,7 @@ func TestLoadConfig_Valid(t *testing.T) {
 	}
 }
 
+// TestLoadConfig_MalformedJSON verifies that unparseable JSON returns an error.
 func TestLoadConfig_MalformedJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
@@ -76,6 +83,8 @@ func TestLoadConfig_MalformedJSON(t *testing.T) {
 	}
 }
 
+// TestLoadConfig_WrongFieldType verifies that a JSON type mismatch (e.g. number
+// where a string is expected) returns a parsing error.
 func TestLoadConfig_WrongFieldType(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
@@ -98,6 +107,8 @@ func TestLoadConfig_WrongFieldType(t *testing.T) {
 	}
 }
 
+// TestLoadConfig_ReadError verifies that an I/O failure (config path is a
+// directory) returns an error with the expected prefix.
 func TestLoadConfig_ReadError(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
@@ -118,6 +129,8 @@ func TestLoadConfig_ReadError(t *testing.T) {
 	}
 }
 
+// TestSaveConfig verifies that a Config written with SaveConfig round-trips
+// correctly through LoadConfig.
 func TestSaveConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
@@ -136,6 +149,8 @@ func TestSaveConfig(t *testing.T) {
 	}
 }
 
+// TestLoadConfig_MissingOverwriteConfirmed verifies that a config file that
+// omits overwrite_confirmed deserializes the field to false.
 func TestLoadConfig_MissingOverwriteConfirmed(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
@@ -158,6 +173,8 @@ func TestLoadConfig_MissingOverwriteConfirmed(t *testing.T) {
 	}
 }
 
+// TestSaveConfig_WriteError verifies that an I/O failure during write (config
+// path is a directory) returns an error with the expected prefix.
 func TestSaveConfig_WriteError(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
@@ -177,6 +194,8 @@ func TestSaveConfig_WriteError(t *testing.T) {
 	}
 }
 
+// TestSaveConfig_CreatesDirectory verifies that SaveConfig creates the
+// ~/.gh-tag directory when it does not yet exist.
 func TestSaveConfig_CreatesDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
@@ -196,10 +215,9 @@ func TestSaveConfig_CreatesDirectory(t *testing.T) {
 	}
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// EffectivePrefix
-// ──────────────────────────────────────────────────────────────────────────────
-
+// TestEffectivePrefix covers the default fallback to "v", an explicitly
+// configured prefix, load errors, and an explicitly empty prefix stored in
+// the config file.
 func TestEffectivePrefix(t *testing.T) {
 	t.Run("no config returns v", func(t *testing.T) {
 		t.Setenv("HOME", t.TempDir())

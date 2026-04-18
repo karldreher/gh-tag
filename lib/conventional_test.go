@@ -4,6 +4,9 @@ import (
 	"testing"
 )
 
+// TestParseConventionalCommitBumpType verifies that conventional commit subject
+// lines are correctly mapped to major, minor, or patch bump types, and that
+// non-conventional subjects return an error.
 func TestParseConventionalCommitBumpType(t *testing.T) {
 	tests := []struct {
 		title   string

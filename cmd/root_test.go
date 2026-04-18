@@ -26,6 +26,10 @@ func TestMutualExclusionFlags(t *testing.T) {
 		{"major+minor", []string{"--major", "--minor"}},
 		{"major+patch", []string{"--major", "--patch"}},
 		{"minor+patch", []string{"--minor", "--patch"}},
+		{"auto+major", []string{"--auto", "--major"}},
+		{"auto+minor", []string{"--auto", "--minor"}},
+		{"auto+patch", []string{"--auto", "--patch"}},
+		{"auto+overwrite", []string{"--auto", "--overwrite"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

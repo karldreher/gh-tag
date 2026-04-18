@@ -24,13 +24,13 @@ func Execute() error {
 // local variables. Returning a new instance each time makes the function safe
 // to call from tests without shared flag state.
 func newRootCmd() *cobra.Command {
-	var major, minor, patch, confirm, overwrite bool
+	var major, minor, patch, confirm, overwrite, auto bool
 	cmd := &cobra.Command{
 		Use:           "gh tag",
 		Short:         "🏷️  The missing tag command.",
 		SilenceErrors: true,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return runTagCmd(major, minor, patch, confirm, overwrite)
+			return runTagCmd(major, minor, patch, confirm, overwrite, auto)
 		},
 	}
 	cmd.Flags().BoolVar(&major, "major", false, "bump major version")
@@ -38,8 +38,28 @@ func newRootCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&patch, "patch", false, "bump patch version")
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "skip confirmation prompt")
 	cmd.Flags().BoolVar(&overwrite, "overwrite", false, "overwrite the latest tag at HEAD")
-	cmd.MarkFlagsMutuallyExclusive("overwrite", "major", "minor", "patch")
+	cmd.Flags().BoolVar(&auto, "auto", false, "infer bump type from HEAD commit (conventional commits)")
+	cmd.MarkFlagsMutuallyExclusive("overwrite", "major", "minor", "patch", "auto")
 	return cmd
+}
+
+// resolveBumpType returns "major", "minor", or "patch". When autoFlag is set it
+// reads the HEAD commit title and infers the bump type from conventional commits.
+// Otherwise it delegates to readBumpType (flags or interactive prompt).
+func resolveBumpType(reader *bufio.Reader, majorFlag, minorFlag, patchFlag, autoFlag bool) (string, error) {
+	if !autoFlag {
+		return readBumpType(reader, majorFlag, minorFlag, patchFlag)
+	}
+	title, err := lib.HeadCommitTitle()
+	if err != nil {
+		return "", err
+	}
+	bumpType, err := lib.ParseConventionalCommitBumpType(title)
+	if err != nil {
+		return "", err
+	}
+	fmt.Printf("🤖 Auto: inferred %q from commit: %s\n", bumpType, title)
+	return bumpType, nil
 }
 
 // readBumpType returns "major", "minor", or "patch" — either from flags or
@@ -80,7 +100,7 @@ func confirmAction(reader *bufio.Reader, skipConfirm bool, prompt string) (bool,
 // runTagCmd implements the root `gh tag` command. It fetches remote tags,
 // determines the next version (or re-points the latest tag when overwriteFlag
 // is set), confirms with the user, then creates and pushes the tag.
-func runTagCmd(majorFlag, minorFlag, patchFlag, skipConfirm, overwriteFlag bool) error {
+func runTagCmd(majorFlag, minorFlag, patchFlag, skipConfirm, overwriteFlag, autoFlag bool) error {
 	prefix, err := lib.EffectivePrefix()
 	if err != nil {
 		return err
@@ -174,7 +194,7 @@ func runTagCmd(majorFlag, minorFlag, patchFlag, skipConfirm, overwriteFlag bool)
 			fmt.Println("🆕 No existing tags found.")
 			fmt.Println()
 		}
-		bumpType, err := readBumpType(reader, majorFlag, minorFlag, patchFlag)
+		bumpType, err := resolveBumpType(reader, majorFlag, minorFlag, patchFlag, autoFlag)
 		if err != nil {
 			return err
 		}
@@ -191,7 +211,7 @@ func runTagCmd(majorFlag, minorFlag, patchFlag, skipConfirm, overwriteFlag bool)
 		fmt.Printf("✅ Latest tag: %s\n", current)
 		fmt.Println()
 
-		bumpType, err := readBumpType(reader, majorFlag, minorFlag, patchFlag)
+		bumpType, err := resolveBumpType(reader, majorFlag, minorFlag, patchFlag, autoFlag)
 		if err != nil {
 			return err
 		}

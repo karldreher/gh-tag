@@ -8,7 +8,19 @@ import (
 )
 
 // Config holds user-level persistent settings for gh-tag.
-// It is persisted as JSON at ~/.gh-tag/config.json.
+// It is persisted as JSON at ~/.gh-tag/config.json and represents schema V1
+// (the version is implied, not stored in the file).
+//
+// Backward-compatibility rules: adding optional fields with a zero-value
+// default is safe — json.Unmarshal silently ignores unknown keys and leaves
+// missing keys at their zero value, so existing files continue to load
+// without error. Removing a field, renaming a JSON key, or changing the
+// meaning of an existing field is a breaking change.
+//
+// Breaking changes require a new schema version: rename this type to ConfigV2,
+// rename the file to configV2.json (update ConfigPath accordingly), provide a
+// one-time migration path from the V1 file, and leave this type (ConfigV1) in
+// place until migration support is dropped.
 type Config struct {
 	// Prefix is the tag prefix used when creating and discovering tags.
 	// When empty, callers should default to "v".

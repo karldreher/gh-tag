@@ -5,6 +5,8 @@ import (
 	"testing"
 )
 
+// TestListCmd_Flags verifies flag acceptance, mutual exclusion of --ascending
+// and --descending, and rejection of unknown flags.
 func TestListCmd_Flags(t *testing.T) {
 	tests := []struct {
 		name    string

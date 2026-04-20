@@ -7,14 +7,14 @@ import (
 	"testing"
 )
 
+// makeReader returns a bufio.Reader backed by the given string, for injecting
+// simulated stdin in tests.
 func makeReader(input string) *bufio.Reader {
 	return bufio.NewReader(strings.NewReader(input))
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// flag mutual exclusion — CLI level
-// ──────────────────────────────────────────────────────────────────────────────
-
+// TestMutualExclusionFlags verifies that flag pairs that must not coexist are
+// rejected by cobra at the CLI level.
 func TestMutualExclusionFlags(t *testing.T) {
 	tests := []struct {
 		name string
@@ -26,6 +26,10 @@ func TestMutualExclusionFlags(t *testing.T) {
 		{"major+minor", []string{"--major", "--minor"}},
 		{"major+patch", []string{"--major", "--patch"}},
 		{"minor+patch", []string{"--minor", "--patch"}},
+		{"auto+major", []string{"--auto", "--major"}},
+		{"auto+minor", []string{"--auto", "--minor"}},
+		{"auto+patch", []string{"--auto", "--patch"}},
+		{"auto+overwrite", []string{"--auto", "--overwrite"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -40,10 +44,8 @@ func TestMutualExclusionFlags(t *testing.T) {
 	}
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// readBumpType
-// ──────────────────────────────────────────────────────────────────────────────
-
+// TestReadBumpType_Flags verifies that each boolean flag short-circuits the
+// reader and returns the correct bump type without consuming stdin.
 func TestReadBumpType_Flags(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -70,9 +72,10 @@ func TestReadBumpType_Flags(t *testing.T) {
 	}
 }
 
+// TestReadBumpType_ReaderError verifies that an empty reader triggers an error
+// when no flag is set, because ReadString reaches EOF before the newline
+// delimiter.
 func TestReadBumpType_ReaderError(t *testing.T) {
-	// Empty reader produces EOF before the newline delimiter, triggering the
-	// ReadString error branch.
 	r := makeReader("")
 	_, err := readBumpType(r, false, false, false)
 	if err == nil {
@@ -80,10 +83,8 @@ func TestReadBumpType_ReaderError(t *testing.T) {
 	}
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// confirmAction
-// ──────────────────────────────────────────────────────────────────────────────
-
+// TestConfirmAction verifies that skipConfirm bypasses the reader, that y/yes
+// variants (case-insensitive) confirm, and that all other inputs deny.
 func TestConfirmAction(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -117,6 +118,8 @@ func TestConfirmAction(t *testing.T) {
 	}
 }
 
+// TestConfirmAction_ReaderError verifies that an empty reader triggers an error
+// when skipConfirm is false.
 func TestConfirmAction_ReaderError(t *testing.T) {
 	r := makeReader("")
 	_, err := confirmAction(r, false, "prompt: ")

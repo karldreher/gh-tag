@@ -7,6 +7,8 @@ import (
 	"testing"
 )
 
+// TestViewCmd_TooManyArgs verifies that providing two positional arguments is
+// rejected by cobra before any business logic is reached.
 func TestViewCmd_TooManyArgs(t *testing.T) {
 	cmd := newRootCmd()
 	cmd.AddCommand(newViewCmd())
@@ -18,9 +20,9 @@ func TestViewCmd_TooManyArgs(t *testing.T) {
 	}
 }
 
+// TestViewCmd_WebFlagTooManyArgs verifies that --web with two positional args
+// is still rejected by cobra before any browser call is made.
 func TestViewCmd_WebFlagTooManyArgs(t *testing.T) {
-	// --web with two positional args is still rejected by cobra before any
-	// browser call is made, so this is safe to run in CI.
 	cmd := newRootCmd()
 	cmd.AddCommand(newViewCmd())
 	cmd.SetArgs([]string{"view", "v0.1.1", "v0.1.0", "--web"})
@@ -31,10 +33,9 @@ func TestViewCmd_WebFlagTooManyArgs(t *testing.T) {
 	}
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// requireSingleTag
-// ──────────────────────────────────────────────────────────────────────────────
-
+// TestRequireSingleTag covers nil, empty, no-matching-prefix, single, and
+// multiple tag combinations, asserting the correct value or error sentinel for
+// each case.
 func TestRequireSingleTag(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -125,9 +126,10 @@ func TestRequireSingleTag(t *testing.T) {
 	}
 }
 
+// TestRequireSingleTag_ErrorMessageContent verifies that the error for more
+// than one matching tag includes the count and a usage hint so the user knows
+// how to resolve it without consulting documentation.
 func TestRequireSingleTag_ErrorMessageContent(t *testing.T) {
-	// The error for >1 tags must include the count and a usage hint so the
-	// user knows how to resolve it without consulting documentation.
 	_, err := requireSingleTag([]string{"v1.0.0", "v2.0.0", "v3.0.0"}, "v")
 	if err == nil {
 		t.Fatal("expected error, got nil")

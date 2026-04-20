@@ -9,10 +9,8 @@ import (
 	"testing"
 )
 
-// ──────────────────────────────────────────────────────────────────────────────
-// ParseVersion — exhaustive table-driven tests
-// ──────────────────────────────────────────────────────────────────────────────
-
+// TestParseVersion exercises ParseVersion across the full range of valid,
+// malformed, and edge-case tag strings.
 func TestParseVersion(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -107,14 +105,9 @@ func TestParseVersion(t *testing.T) {
 	}
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// ParseVersion — non-integer component matrix
-//
-// Each row in nonIntValues is injected into every component position
-// (major / minor / patch) while the remaining two positions hold valid
-// integers. Every combination must return ok=false.
-// ──────────────────────────────────────────────────────────────────────────────
-
+// TestParseVersion_NonIntegerMatrix injects non-integer values into each
+// component position (major, minor, patch) while the other two hold valid
+// integers, and asserts ok=false for every combination.
 func TestParseVersion_NonIntegerMatrix(t *testing.T) {
 	nonIntValues := []string{
 		"abc",  // pure alpha
@@ -155,10 +148,9 @@ func TestParseVersion_NonIntegerMatrix(t *testing.T) {
 	}
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// FindLatestTag — table-driven tests
-// ──────────────────────────────────────────────────────────────────────────────
-
+// TestFindLatestTag verifies that the highest semantic version is selected
+// correctly, including numeric (not lexicographic) ordering and mixed-validity
+// inputs where invalid tags are silently skipped.
 func TestFindLatestTag(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -229,10 +221,8 @@ func TestFindLatestTag(t *testing.T) {
 	}
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// BumpVersion — table-driven tests
-// ──────────────────────────────────────────────────────────────────────────────
-
+// TestBumpVersion verifies that each bump type increments the correct component
+// and resets lower components to zero.
 func TestBumpVersion(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -267,10 +257,8 @@ func TestBumpVersion(t *testing.T) {
 	}
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// FormatTag
-// ──────────────────────────────────────────────────────────────────────────────
-
+// TestFormatTag verifies that version components are serialised with the correct
+// prefix and dot-separated format.
 func TestFormatTag(t *testing.T) {
 	tests := []struct {
 		prefix         string
@@ -292,10 +280,8 @@ func TestFormatTag(t *testing.T) {
 	}
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// ListRemoteTags — mocked command tests
-// ──────────────────────────────────────────────────────────────────────────────
-
+// TestListRemoteTags_Empty verifies that an empty git ls-remote output returns
+// a nil slice without error.
 func TestListRemoteTags_Empty(t *testing.T) {
 	old := listRemoteTagsCmd
 	defer func() { listRemoteTagsCmd = old }()
@@ -310,6 +296,8 @@ func TestListRemoteTags_Empty(t *testing.T) {
 	}
 }
 
+// TestListRemoteTags_LightweightTags verifies that standard lightweight tag refs
+// are parsed into bare tag names.
 func TestListRemoteTags_LightweightTags(t *testing.T) {
 	old := listRemoteTagsCmd
 	defer func() { listRemoteTagsCmd = old }()
@@ -331,6 +319,8 @@ func TestListRemoteTags_LightweightTags(t *testing.T) {
 	}
 }
 
+// TestListRemoteTags_AnnotatedTagDedup verifies that the peeled '^{}' ref for
+// an annotated tag is stripped, yielding only the plain name without duplication.
 func TestListRemoteTags_AnnotatedTagDedup(t *testing.T) {
 	old := listRemoteTagsCmd
 	defer func() { listRemoteTagsCmd = old }()
@@ -354,6 +344,8 @@ func TestListRemoteTags_AnnotatedTagDedup(t *testing.T) {
 	}
 }
 
+// TestListRemoteTags_MixedAnnotatedAndLightweight verifies that annotated and
+// lightweight tags can coexist in ls-remote output without duplication.
 func TestListRemoteTags_MixedAnnotatedAndLightweight(t *testing.T) {
 	old := listRemoteTagsCmd
 	defer func() { listRemoteTagsCmd = old }()
@@ -380,6 +372,8 @@ func TestListRemoteTags_MixedAnnotatedAndLightweight(t *testing.T) {
 	}
 }
 
+// TestListRemoteTags_CommandFailure verifies that a non-zero git exit code
+// surfaces an error containing the expected message prefix.
 func TestListRemoteTags_CommandFailure(t *testing.T) {
 	old := listRemoteTagsCmd
 	defer func() { listRemoteTagsCmd = old }()
@@ -394,6 +388,8 @@ func TestListRemoteTags_CommandFailure(t *testing.T) {
 	}
 }
 
+// TestListRemoteTags_MalformedLines verifies that lines without a tab separator
+// or with non-tag refs (e.g. refs/heads/) are silently skipped.
 func TestListRemoteTags_MalformedLines(t *testing.T) {
 	old := listRemoteTagsCmd
 	defer func() { listRemoteTagsCmd = old }()
@@ -417,10 +413,8 @@ func TestListRemoteTags_MalformedLines(t *testing.T) {
 	}
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// CreateLocalTag — mocked tests
-// ──────────────────────────────────────────────────────────────────────────────
-
+// TestCreateLocalTag_Mock_Success verifies that a successful git command
+// produces no error.
 func TestCreateLocalTag_Mock_Success(t *testing.T) {
 	old := createTagCmd
 	defer func() { createTagCmd = old }()
@@ -431,6 +425,8 @@ func TestCreateLocalTag_Mock_Success(t *testing.T) {
 	}
 }
 
+// TestCreateLocalTag_Mock_Failure verifies that a failing git command surfaces
+// an error containing the expected message prefix.
 func TestCreateLocalTag_Mock_Failure(t *testing.T) {
 	old := createTagCmd
 	defer func() { createTagCmd = old }()
@@ -445,10 +441,7 @@ func TestCreateLocalTag_Mock_Failure(t *testing.T) {
 	}
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// PushTag — mocked tests
-// ──────────────────────────────────────────────────────────────────────────────
-
+// TestPushTag_Mock_Success verifies that a successful push produces no error.
 func TestPushTag_Mock_Success(t *testing.T) {
 	old := pushTagCmd
 	defer func() { pushTagCmd = old }()
@@ -459,6 +452,8 @@ func TestPushTag_Mock_Success(t *testing.T) {
 	}
 }
 
+// TestPushTag_Mock_Failure verifies that a failing push surfaces an error
+// containing the expected message prefix.
 func TestPushTag_Mock_Failure(t *testing.T) {
 	old := pushTagCmd
 	defer func() { pushTagCmd = old }()
@@ -472,10 +467,6 @@ func TestPushTag_Mock_Failure(t *testing.T) {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Integration tests — real temp git repo, no remote, never pushes
-// ──────────────────────────────────────────────────────────────────────────────
 
 // initTempRepo creates a temporary git repository with a single empty commit.
 // The directory is automatically removed when the test ends.
@@ -498,6 +489,8 @@ func initTempRepo(t *testing.T) string {
 	return dir
 }
 
+// TestCreateLocalTag_Integration creates a tag in a real temporary repository
+// and confirms it appears in git tag output.
 func TestCreateLocalTag_Integration(t *testing.T) {
 	dir := initTempRepo(t)
 
@@ -523,6 +516,8 @@ func TestCreateLocalTag_Integration(t *testing.T) {
 	}
 }
 
+// TestCreateLocalTag_Integration_Duplicate verifies that creating a tag that
+// already exists returns an error.
 func TestCreateLocalTag_Integration_Duplicate(t *testing.T) {
 	dir := initTempRepo(t)
 
@@ -542,6 +537,8 @@ func TestCreateLocalTag_Integration_Duplicate(t *testing.T) {
 	}
 }
 
+// TestCreateLocalTag_Integration_MultipleVersions verifies that multiple
+// distinct tags can be created in a single repository.
 func TestCreateLocalTag_Integration_MultipleVersions(t *testing.T) {
 	dir := initTempRepo(t)
 
@@ -569,6 +566,8 @@ func TestCreateLocalTag_Integration_MultipleVersions(t *testing.T) {
 	}
 }
 
+// TestCreateLocalTag_Integration_CustomPrefix verifies that tags with a non-v
+// prefix are created and stored correctly in the repository.
 func TestCreateLocalTag_Integration_CustomPrefix(t *testing.T) {
 	dir := initTempRepo(t)
 
@@ -649,8 +648,8 @@ func TestListRemoteTags_TagsNeverReturnsTrailingNewlineInName(t *testing.T) {
 	}
 }
 
-// TestCreateLocalTag_Integration_EmptyDir verifies that tagging a repo with
-// no prior commits works (git commit --allow-empty in initTempRepo provides one).
+// TestCreateLocalTag_Integration_AfterInitialCommit verifies that a tag can be
+// created on a repository that has only a single initial commit.
 func TestCreateLocalTag_Integration_AfterInitialCommit(t *testing.T) {
 	dir := initTempRepo(t)
 
@@ -677,13 +676,14 @@ func TestCreateLocalTag_Integration_AfterInitialCommit(t *testing.T) {
 	}
 }
 
-// TestListRemoteTags_LargeOutput verifies that many tags are parsed correctly.
+// TestListRemoteTags_LargeOutput verifies that many tags are all parsed
+// correctly without truncation or off-by-one errors.
 func TestListRemoteTags_LargeOutput(t *testing.T) {
 	old := listRemoteTagsCmd
 	defer func() { listRemoteTagsCmd = old }()
 
 	var lines []string
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		lines = append(lines, "abc123\trefs/tags/v1.0."+strconv.Itoa(i))
 	}
 	output := strings.Join(lines, "\n") + "\n"
@@ -700,19 +700,8 @@ func TestListRemoteTags_LargeOutput(t *testing.T) {
 	}
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// HasTagsWithDifferentPrefix — onboarding / prefix-mismatch detection
-//
-// This is the critical onboarding scenario: the user runs `gh tag` on a repo
-// that already has tags, but those tags use a different prefix than configured.
-// Without detection, the tool silently reports "no tags found" and would create
-// an unrelated tag series — a confusing first experience.
-// ──────────────────────────────────────────────────────────────────────────────
-
-// ──────────────────────────────────────────────────────────────────────────────
-// ResolveTagRef — mocked tests
-// ──────────────────────────────────────────────────────────────────────────────
-
+// TestResolveTagRef_Success verifies that a full SHA returned by git is
+// truncated to 7 characters.
 func TestResolveTagRef_Success(t *testing.T) {
 	old := resolveTagRefCmd
 	defer func() { resolveTagRefCmd = old }()
@@ -729,6 +718,8 @@ func TestResolveTagRef_Success(t *testing.T) {
 	}
 }
 
+// TestResolveTagRef_Failure verifies that a failing command surfaces an error
+// with the expected prefix.
 func TestResolveTagRef_Failure(t *testing.T) {
 	old := resolveTagRefCmd
 	defer func() { resolveTagRefCmd = old }()
@@ -743,10 +734,8 @@ func TestResolveTagRef_Failure(t *testing.T) {
 	}
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// ResolveHead — mocked tests
-// ──────────────────────────────────────────────────────────────────────────────
-
+// TestResolveHead_Success verifies that HEAD's full SHA is truncated to 7
+// characters.
 func TestResolveHead_Success(t *testing.T) {
 	old := resolveHeadCmd
 	defer func() { resolveHeadCmd = old }()
@@ -763,6 +752,8 @@ func TestResolveHead_Success(t *testing.T) {
 	}
 }
 
+// TestResolveHead_Failure verifies that a failing command surfaces an error
+// with the expected message.
 func TestResolveHead_Failure(t *testing.T) {
 	old := resolveHeadCmd
 	defer func() { resolveHeadCmd = old }()
@@ -777,10 +768,8 @@ func TestResolveHead_Failure(t *testing.T) {
 	}
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// OverwriteTag — mocked tests
-// ──────────────────────────────────────────────────────────────────────────────
-
+// TestOverwriteTag_Success verifies that a successful git tag -f produces no
+// error.
 func TestOverwriteTag_Success(t *testing.T) {
 	old := overwriteTagCmd
 	defer func() { overwriteTagCmd = old }()
@@ -791,6 +780,8 @@ func TestOverwriteTag_Success(t *testing.T) {
 	}
 }
 
+// TestOverwriteTag_Failure verifies that a failing git tag -f surfaces an error
+// containing the expected message prefix.
 func TestOverwriteTag_Failure(t *testing.T) {
 	old := overwriteTagCmd
 	defer func() { overwriteTagCmd = old }()
@@ -805,10 +796,8 @@ func TestOverwriteTag_Failure(t *testing.T) {
 	}
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// ForcePushTag — mocked tests
-// ──────────────────────────────────────────────────────────────────────────────
-
+// TestForcePushTag_Success verifies that a successful force-push produces no
+// error.
 func TestForcePushTag_Success(t *testing.T) {
 	old := forcePushTagCmd
 	defer func() { forcePushTagCmd = old }()
@@ -819,6 +808,8 @@ func TestForcePushTag_Success(t *testing.T) {
 	}
 }
 
+// TestForcePushTag_Immutability verifies that a GH013 rejection from the remote
+// is surfaced as ErrPushImmutable rather than a generic error.
 func TestForcePushTag_Immutability(t *testing.T) {
 	old := forcePushTagCmd
 	defer func() { forcePushTagCmd = old }()
@@ -835,6 +826,8 @@ func TestForcePushTag_Immutability(t *testing.T) {
 	}
 }
 
+// TestForcePushTag_OtherFailure verifies that a generic push failure returns an
+// error that is not ErrPushImmutable.
 func TestForcePushTag_OtherFailure(t *testing.T) {
 	old := forcePushTagCmd
 	defer func() { forcePushTagCmd = old }()
@@ -852,8 +845,10 @@ func TestForcePushTag_OtherFailure(t *testing.T) {
 	}
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-
+// TestHasTagsWithDifferentPrefix covers the onboarding mismatch scenario: the
+// remote has tags but none match the configured prefix. Without this detection
+// the tool would silently treat the repo as untagged and create an unrelated
+// tag series.
 func TestHasTagsWithDifferentPrefix(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -905,10 +900,8 @@ func TestHasTagsWithDifferentPrefix(t *testing.T) {
 	}
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// ParseBumpType
-// ──────────────────────────────────────────────────────────────────────────────
-
+// TestParseBumpType verifies that all documented input aliases map to the
+// correct canonical bump type, and that invalid inputs return an error.
 func TestParseBumpType(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -948,10 +941,9 @@ func TestParseBumpType(t *testing.T) {
 	}
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// SortTags
-// ──────────────────────────────────────────────────────────────────────────────
-
+// TestSortTags verifies that tags are filtered to valid semver entries and
+// ordered numerically (not lexicographically) in both ascending and descending
+// modes.
 func TestSortTags(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -1031,4 +1023,3 @@ func TestSortTags(t *testing.T) {
 		})
 	}
 }
-

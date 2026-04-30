@@ -1023,3 +1023,80 @@ func TestSortTags(t *testing.T) {
 		})
 	}
 }
+
+// TestExtractTagPrefix verifies that ExtractTagPrefix correctly identifies the
+// non-numeric prefix from tags ending in a semver suffix.
+func TestExtractTagPrefix(t *testing.T) {
+	tests := []struct {
+		tag        string
+		wantPrefix string
+		wantOK     bool
+	}{
+		{"v1.2.3", "v", true},
+		{"v0.0.0", "v", true},
+		{"1.2.3", "", true},
+		{"release-1.2.3", "release-", true},
+		{"my-project-v1.2.3", "my-project-v", true},
+		{"another-project-v2.0.0", "another-project-v", true},
+
+		{"not-semver", "", false},
+		{"", "", false},
+		{"v1.2", "", false},
+		{"v1", "", false},
+		{"v1.2.3-beta", "", false},
+		{"v1.0.0^{}", "", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.tag, func(t *testing.T) {
+			prefix, ok := ExtractTagPrefix(tc.tag)
+			if ok != tc.wantOK {
+				t.Errorf("ExtractTagPrefix(%q) ok=%v, want %v", tc.tag, ok, tc.wantOK)
+				return
+			}
+			if ok && prefix != tc.wantPrefix {
+				t.Errorf("ExtractTagPrefix(%q) prefix=%q, want %q", tc.tag, prefix, tc.wantPrefix)
+			}
+		})
+	}
+}
+
+// TestUniqueSemverPrefixes verifies that all unique semver prefixes are returned,
+// deduplicated, and sorted.
+func TestUniqueSemverPrefixes(t *testing.T) {
+	tests := []struct {
+		name string
+		tags []string
+		want []string
+	}{
+		{"empty input", []string{}, []string{}},
+		{"nil input", nil, []string{}},
+		{"single v prefix", []string{"v1.0.0", "v1.1.0", "v2.0.0"}, []string{"v"}},
+		{
+			"multiple distinct prefixes",
+			[]string{"v1.0.0", "my-project-v1.0.0", "another-v2.0.0"},
+			[]string{"another-v", "my-project-v", "v"},
+		},
+		{"deduplication", []string{"v1.0.0", "v1.1.0", "v2.0.0"}, []string{"v"}},
+		{"non-semver tags skipped", []string{"latest", "stable", "v1.0.0"}, []string{"v"}},
+		{"empty prefix bare semver", []string{"1.0.0", "2.0.0"}, []string{""}},
+		{
+			"mixed prefixes and non-semver",
+			[]string{"v1.0.0", "release-1.0.0", "junk", "v2.0.0"},
+			[]string{"release-", "v"},
+		},
+		{"pre-release tags skipped", []string{"v1.0.0-beta", "v1.0.0"}, []string{"v"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := UniqueSemverPrefixes(tc.tags)
+			if len(got) != len(tc.want) {
+				t.Fatalf("UniqueSemverPrefixes() = %v, want %v", got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("UniqueSemverPrefixes()[%d] = %q, want %q", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}

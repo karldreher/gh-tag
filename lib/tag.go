@@ -6,10 +6,16 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 )
+
+// semverSuffixRe matches any string ending in a major.minor.patch numeric suffix.
+// Capture group 1 is everything before the version (the "prefix"); groups 2–4 are
+// the three numeric components. The prefix may be empty (bare "1.2.3" is valid).
+var semverSuffixRe = regexp.MustCompile(`^(.*?)(\d+)\.(\d+)\.(\d+)$`)
 
 // ParseVersion parses a semver tag string with the given prefix into its
 // numeric components. It returns ok=false (and zero values) for any input
@@ -188,6 +194,36 @@ func HasTagsWithDifferentPrefix(tags []string, prefix string) bool {
 	}
 	_, _, _, found := FindLatestTag(tags, prefix)
 	return !found
+}
+
+// ExtractTagPrefix extracts the non-numeric prefix from a tag that ends in a
+// semver suffix (major.minor.patch). Returns the prefix and ok=true; returns
+// ("", false) for tags that do not end in a semver suffix. The prefix may be
+// an empty string (e.g. "1.2.3" → prefix "", ok=true).
+func ExtractTagPrefix(tag string) (string, bool) {
+	m := semverSuffixRe.FindStringSubmatch(tag)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
+}
+
+// UniqueSemverPrefixes returns a sorted, deduplicated list of all tag prefixes
+// found across the given tags that end in a semver suffix. Tags that do not
+// parse as semver are silently skipped, consistent with FindLatestTag.
+func UniqueSemverPrefixes(tags []string) []string {
+	seen := make(map[string]struct{})
+	for _, t := range tags {
+		if prefix, ok := ExtractTagPrefix(t); ok {
+			seen[prefix] = struct{}{}
+		}
+	}
+	result := make([]string, 0, len(seen))
+	for p := range seen {
+		result = append(result, p)
+	}
+	sort.Strings(result)
+	return result
 }
 
 // listRemoteTagsCmd is the factory for the git ls-remote command.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/karldreher/gh-tag/lib"
@@ -25,12 +26,13 @@ func Execute() error {
 // to call from tests without shared flag state.
 func newRootCmd() *cobra.Command {
 	var major, minor, patch, confirm, overwrite, auto bool
+	var tagPrefix string
 	cmd := &cobra.Command{
 		Use:           "gh tag",
 		Short:         "🏷️  The missing tag command.",
 		SilenceErrors: true,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return runTagCmd(major, minor, patch, confirm, overwrite, auto)
+			return runTagCmd(major, minor, patch, confirm, overwrite, auto, tagPrefix)
 		},
 	}
 	cmd.Flags().BoolVar(&major, "major", false, "bump major version")
@@ -39,6 +41,7 @@ func newRootCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "skip confirmation prompt")
 	cmd.Flags().BoolVar(&overwrite, "overwrite", false, "overwrite the latest tag at HEAD")
 	cmd.Flags().BoolVar(&auto, "auto", false, "infer bump type from HEAD commit (conventional commits)")
+	cmd.Flags().StringVar(&tagPrefix, "tag-prefix", "", "override tag prefix for this operation (ephemeral, not saved to config)")
 	cmd.MarkFlagsMutuallyExclusive("overwrite", "major", "minor", "patch", "auto")
 	return cmd
 }
@@ -97,10 +100,78 @@ func confirmAction(reader *bufio.Reader, skipConfirm bool, prompt string) (bool,
 	return input == "y" || input == "yes", nil
 }
 
+// resolveOperatingPrefix determines which tag prefix to use for the current
+// operation. Decision tree:
+//
+//  1. If tagPrefixFlag is non-empty, return it immediately (user override).
+//  2. If configuredPrefix already has matching tags, return it (normal path).
+//  3. Otherwise collect alternative semver prefixes from remote tags:
+//     - 0 alternatives → return configuredPrefix (new series will be created).
+//     - 1 alternative  → prompt user to use it or fall back to configuredPrefix.
+//     - 2+ alternatives → present numbered list; user must select or type "n".
+//
+// The returned prefix is ephemeral and is never written to config.
+func resolveOperatingPrefix(reader *bufio.Reader, tags []string, configuredPrefix, tagPrefixFlag string) (string, error) {
+	if tagPrefixFlag != "" {
+		return tagPrefixFlag, nil
+	}
+
+	_, _, _, found := lib.FindLatestTag(tags, configuredPrefix)
+	if found {
+		return configuredPrefix, nil
+	}
+
+	allPrefixes := lib.UniqueSemverPrefixes(tags)
+	var alternatives []string
+	for _, p := range allPrefixes {
+		if p != configuredPrefix {
+			alternatives = append(alternatives, p)
+		}
+	}
+
+	switch len(alternatives) {
+	case 0:
+		return configuredPrefix, nil
+
+	case 1:
+		fmt.Printf("⚠️  Found tags with prefix %q. Use this prefix? [y/N]: ", alternatives[0])
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return "", fmt.Errorf("reading input: %w", err)
+		}
+		input := strings.ToLower(strings.TrimSpace(line))
+		if input == "y" || input == "yes" {
+			return alternatives[0], nil
+		}
+		return configuredPrefix, nil
+
+	default:
+		fmt.Println("⚠️  Multiple tag prefix groups found on remote:")
+		for i, p := range alternatives {
+			fmt.Printf("   %d) %s\n", i+1, p)
+		}
+		fmt.Printf("   n) Start new %q series\n", configuredPrefix)
+		fmt.Print("Select prefix: ")
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return "", fmt.Errorf("reading input: %w", err)
+		}
+		input := strings.ToLower(strings.TrimSpace(line))
+		if input == "n" {
+			return configuredPrefix, nil
+		}
+		n, err := strconv.Atoi(input)
+		if err != nil || n < 1 || n > len(alternatives) {
+			return "", fmt.Errorf("invalid selection %q: enter a number between 1 and %d, or n", input, len(alternatives))
+		}
+		return alternatives[n-1], nil
+	}
+}
+
 // runTagCmd implements the root `gh tag` command. It fetches remote tags,
 // determines the next version (or re-points the latest tag when overwriteFlag
 // is set), confirms with the user, then creates and pushes the tag.
-func runTagCmd(majorFlag, minorFlag, patchFlag, skipConfirm, overwriteFlag, autoFlag bool) error {
+func runTagCmd(majorFlag, minorFlag, patchFlag, skipConfirm, overwriteFlag, autoFlag bool, tagPrefixFlag string) error {
 	prefix, err := lib.EffectivePrefix()
 	if err != nil {
 		return err
@@ -118,6 +189,11 @@ func runTagCmd(majorFlag, minorFlag, patchFlag, skipConfirm, overwriteFlag, auto
 		return fmt.Errorf("fetching remote tags: %w", err)
 	}
 	fmt.Println()
+
+	prefix, err = resolveOperatingPrefix(reader, tags, prefix, tagPrefixFlag)
+	if err != nil {
+		return err
+	}
 
 	curMajor, curMinor, curPatch, found := lib.FindLatestTag(tags, prefix)
 
@@ -187,9 +263,8 @@ func runTagCmd(majorFlag, minorFlag, patchFlag, skipConfirm, overwriteFlag, auto
 	var newTag string
 
 	if !found {
-		if lib.HasTagsWithDifferentPrefix(tags, prefix) {
-			fmt.Printf("⚠️  Found %d tag(s) on remote, but none match prefix %q.\n", len(tags), prefix)
-			fmt.Printf("   Run `gh tag prefix --edit` to change the prefix, or proceed to start a new %s series.\n\n", prefix)
+		if tagPrefixFlag != "" {
+			fmt.Printf("🆕 No existing tags found for prefix %q. Starting a new series.\n\n", prefix)
 		} else {
 			fmt.Println("🆕 No existing tags found.")
 			fmt.Println()

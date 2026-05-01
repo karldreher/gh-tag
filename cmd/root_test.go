@@ -127,3 +127,128 @@ func TestConfirmAction_ReaderError(t *testing.T) {
 		t.Fatal("expected error from empty reader")
 	}
 }
+
+// TestResolveOperatingPrefix exercises the full prefix decision tree.
+func TestResolveOperatingPrefix(t *testing.T) {
+	tests := []struct {
+		name             string
+		tags             []string
+		configuredPrefix string
+		tagPrefixFlag    string
+		input            string
+		wantPrefix       string
+		wantErr          bool
+	}{
+		{
+			name:             "tagPrefixFlag set: returns immediately",
+			tags:             []string{"v1.0.0", "my-project-v2.0.0"},
+			configuredPrefix: "v",
+			tagPrefixFlag:    "my-project-v",
+			input:            "",
+			wantPrefix:       "my-project-v",
+		},
+		{
+			name:             "configured prefix matches: returns configured",
+			tags:             []string{"v1.0.0", "v2.0.0"},
+			configuredPrefix: "v",
+			input:            "",
+			wantPrefix:       "v",
+		},
+		{
+			name:             "no tags at all: returns configured",
+			tags:             []string{},
+			configuredPrefix: "v",
+			input:            "",
+			wantPrefix:       "v",
+		},
+		{
+			name:             "no semver tags: returns configured",
+			tags:             []string{"latest", "stable"},
+			configuredPrefix: "v",
+			input:            "",
+			wantPrefix:       "v",
+		},
+		{
+			name:             "single alternative: user y",
+			tags:             []string{"my-project-v1.0.0"},
+			configuredPrefix: "v",
+			input:            "y\n",
+			wantPrefix:       "my-project-v",
+		},
+		{
+			name:             "single alternative: user yes",
+			tags:             []string{"my-project-v1.0.0"},
+			configuredPrefix: "v",
+			input:            "yes\n",
+			wantPrefix:       "my-project-v",
+		},
+		{
+			name:             "single alternative: user n",
+			tags:             []string{"my-project-v1.0.0"},
+			configuredPrefix: "v",
+			input:            "n\n",
+			wantPrefix:       "v",
+		},
+		{
+			name:             "single alternative: empty input (default no)",
+			tags:             []string{"my-project-v1.0.0"},
+			configuredPrefix: "v",
+			input:            "\n",
+			wantPrefix:       "v",
+		},
+		{
+			name:             "multiple alternatives: user selects 1",
+			tags:             []string{"alpha-v1.0.0", "beta-v2.0.0"},
+			configuredPrefix: "v",
+			input:            "1\n",
+			wantPrefix:       "alpha-v",
+		},
+		{
+			name:             "multiple alternatives: user selects 2",
+			tags:             []string{"alpha-v1.0.0", "beta-v2.0.0"},
+			configuredPrefix: "v",
+			input:            "2\n",
+			wantPrefix:       "beta-v",
+		},
+		{
+			name:             "multiple alternatives: user selects n",
+			tags:             []string{"alpha-v1.0.0", "beta-v2.0.0"},
+			configuredPrefix: "v",
+			input:            "n\n",
+			wantPrefix:       "v",
+		},
+		{
+			name:             "multiple alternatives: out-of-range",
+			tags:             []string{"alpha-v1.0.0", "beta-v2.0.0"},
+			configuredPrefix: "v",
+			input:            "99\n",
+			wantErr:          true,
+		},
+		{
+			name:             "multiple alternatives: zero",
+			tags:             []string{"alpha-v1.0.0", "beta-v2.0.0"},
+			configuredPrefix: "v",
+			input:            "0\n",
+			wantErr:          true,
+		},
+		{
+			name:             "multiple alternatives: non-numeric",
+			tags:             []string{"alpha-v1.0.0", "beta-v2.0.0"},
+			configuredPrefix: "v",
+			input:            "xyz\n",
+			wantErr:          true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := makeReader(tc.input)
+			got, err := resolveOperatingPrefix(r, tc.tags, tc.configuredPrefix, tc.tagPrefixFlag)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("resolveOperatingPrefix() err=%v, wantErr=%v", err, tc.wantErr)
+			}
+			if !tc.wantErr && got != tc.wantPrefix {
+				t.Errorf("resolveOperatingPrefix() = %q, want %q", got, tc.wantPrefix)
+			}
+		})
+	}
+}

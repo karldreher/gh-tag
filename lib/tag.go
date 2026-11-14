@@ -343,6 +343,106 @@ func ResolveHead() (string, error) {
 	return sha, nil
 }
 
+// remoteTagCommitCmd queries origin for a tag and its annotated dereference.
+// Replaceable in tests.
+var remoteTagCommitCmd = func(tag string) *exec.Cmd {
+	return exec.Command("git", "ls-remote", "origin", "refs/tags/"+tag, "refs/tags/"+tag+"^{}")
+}
+
+// RemoteTagCommit returns the full commit SHA that tag points to on origin.
+// For annotated tags the "^{}" dereference line (the commit) is preferred over
+// the plain line (the tag object); lightweight tags only have the plain line.
+func RemoteTagCommit(tag string) (string, error) {
+	out, err := remoteTagCommitCmd(tag).Output()
+	if err != nil {
+		return "", fmt.Errorf("querying remote tag %s: %w", tag, err)
+	}
+	var plain, deref string
+	scanner := bufio.NewScanner(bytes.NewReader(out))
+	for scanner.Scan() {
+		parts := strings.SplitN(scanner.Text(), "\t", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		switch parts[1] {
+		case "refs/tags/" + tag + "^{}":
+			deref = parts[0]
+		case "refs/tags/" + tag:
+			plain = parts[0]
+		}
+	}
+	if deref != "" {
+		return deref, nil
+	}
+	if plain != "" {
+		return plain, nil
+	}
+	return "", fmt.Errorf("tag %s not found on remote", tag)
+}
+
+// hasCommitCmd checks whether a commit object exists locally. Replaceable in tests.
+var hasCommitCmd = func(sha string) *exec.Cmd {
+	return exec.Command("git", "cat-file", "-e", sha+"^{commit}")
+}
+
+// fetchTagCmd fetches a tag's history from origin into FETCH_HEAD without
+// creating or updating any local tag refs. Replaceable in tests.
+var fetchTagCmd = func(tag string) *exec.Cmd {
+	return exec.Command("git", "fetch", "--no-tags", "origin", "refs/tags/"+tag)
+}
+
+// EnsureCommit makes sure sha is present in the local object store, fetching
+// tag from origin when it is missing. Local tag refs are never modified.
+func EnsureCommit(sha, tag string) error {
+	if hasCommitCmd(sha).Run() == nil {
+		return nil
+	}
+	out, err := fetchTagCmd(tag).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("fetching tag %s from origin: %w (output: %s)", tag, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// localTagCommitCmd resolves a local tag to its commit SHA. Replaceable in tests.
+var localTagCommitCmd = func(tag string) *exec.Cmd {
+	return exec.Command("git", "rev-parse", "-q", "--verify", "refs/tags/"+tag+"^{commit}")
+}
+
+// LocalTagCommit returns the full commit SHA of a local tag. exists is false
+// when the tag is not present locally.
+func LocalTagCommit(tag string) (sha string, exists bool, err error) {
+	out, err := localTagCommitCmd(tag).Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			// rev-parse --verify -q exits non-zero with no output for a missing ref.
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("resolving local tag %s: %w", tag, err)
+	}
+	return strings.TrimSpace(string(out)), true, nil
+}
+
+// isAncestorCmd checks whether sha is an ancestor of HEAD. Replaceable in tests.
+var isAncestorCmd = func(sha string) *exec.Cmd {
+	return exec.Command("git", "merge-base", "--is-ancestor", sha, "HEAD")
+}
+
+// IsAncestorOfHead reports whether sha is reachable from HEAD.
+// git exits 0 for yes, 1 for no, and any other code for an error.
+func IsAncestorOfHead(sha string) (bool, error) {
+	err := isAncestorCmd(sha).Run()
+	if err == nil {
+		return true, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, fmt.Errorf("checking ancestry of %s: %w", sha, err)
+}
+
 // overwriteTagCmd is the factory for git tag -f. Replaceable in tests.
 var overwriteTagCmd = func(tag string) *exec.Cmd {
 	return exec.Command("git", "tag", "-f", tag)

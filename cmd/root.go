@@ -40,28 +40,77 @@ func newRootCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&patch, "patch", false, "bump patch version")
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "skip confirmation prompt")
 	cmd.Flags().BoolVar(&overwrite, "overwrite", false, "overwrite the latest tag at HEAD")
-	cmd.Flags().BoolVar(&auto, "auto", false, "infer bump type from HEAD commit (conventional commits)")
+	cmd.Flags().BoolVar(&auto, "auto", false, "infer bump type from commits since the latest tag (conventional commits)")
 	cmd.Flags().StringVar(&tagPrefix, "tag-prefix", "", "override tag prefix for this operation (ephemeral, not saved to config)")
 	cmd.MarkFlagsMutuallyExclusive("overwrite", "major", "minor", "patch", "auto")
 	return cmd
 }
 
 // resolveBumpType returns "major", "minor", or "patch". When autoFlag is set it
-// reads the HEAD commit title and infers the bump type from conventional commits.
+// infers the bump type from every commit since baseTag (see autoBumpType).
 // Otherwise it delegates to readBumpType (flags or interactive prompt).
-func resolveBumpType(reader *bufio.Reader, majorFlag, minorFlag, patchFlag, autoFlag bool) (string, error) {
+// baseTag is the latest remote tag, or "" when none exists.
+func resolveBumpType(reader *bufio.Reader, majorFlag, minorFlag, patchFlag, autoFlag bool, baseTag string) (string, error) {
 	if !autoFlag {
 		return readBumpType(reader, majorFlag, minorFlag, patchFlag)
 	}
-	title, err := lib.HeadCommitTitle()
+	return autoBumpType(baseTag)
+}
+
+// autoBumpType infers the semver bump from all commits in baseTag..HEAD using
+// conventional commits; the highest-order change wins. The remote is the source
+// of truth for baseTag: its commit is resolved from origin and fetched when
+// missing locally. Discrepancies are reported as warnings:
+//   - the local tag points at a different commit than the remote
+//   - the remote tag is not an ancestor of HEAD
+//   - individual commits do not follow conventional commit format
+func autoBumpType(baseTag string) (string, error) {
+	base := ""
+	if baseTag != "" {
+		remoteSHA, err := lib.RemoteTagCommit(baseTag)
+		if err != nil {
+			return "", err
+		}
+		if err := lib.EnsureCommit(remoteSHA, baseTag); err != nil {
+			return "", err
+		}
+		localSHA, exists, err := lib.LocalTagCommit(baseTag)
+		if err != nil {
+			return "", err
+		}
+		if exists && localSHA != remoteSHA {
+			fmt.Printf("⚠️  Local tag %s points to %.7s; remote points to %.7s. Using remote.\n", baseTag, localSHA, remoteSHA)
+		}
+		isAncestor, err := lib.IsAncestorOfHead(remoteSHA)
+		if err != nil {
+			return "", err
+		}
+		if !isAncestor {
+			fmt.Printf("⚠️  %s is not an ancestor of HEAD; the commit range may include unrelated commits.\n", baseTag)
+		}
+		base = remoteSHA
+	}
+
+	titles, err := lib.CommitTitlesSince(base)
 	if err != nil {
 		return "", err
 	}
-	bumpType, err := lib.ParseConventionalCommitBumpType(title)
+	bumpType, skipped, err := lib.MaxBumpType(titles)
+	for _, s := range skipped {
+		fmt.Printf("⚠️  Skipped non-conventional commit: %s\n", s)
+	}
 	if err != nil {
+		if errors.Is(err, lib.ErrNoCommits) && baseTag != "" {
+			return "", fmt.Errorf("no commits since %s: nothing to release", baseTag)
+		}
 		return "", err
 	}
-	fmt.Printf("🤖 Auto: inferred %q from commit: %s\n", bumpType, title)
+
+	since := "in history"
+	if baseTag != "" {
+		since = "since " + baseTag
+	}
+	fmt.Printf("🤖 Auto: inferred %q from %d commit(s) %s\n", bumpType, len(titles), since)
 	return bumpType, nil
 }
 
@@ -269,7 +318,7 @@ func runTagCmd(majorFlag, minorFlag, patchFlag, skipConfirm, overwriteFlag, auto
 			fmt.Println("🆕 No existing tags found.")
 			fmt.Println()
 		}
-		bumpType, err := resolveBumpType(reader, majorFlag, minorFlag, patchFlag, autoFlag)
+		bumpType, err := resolveBumpType(reader, majorFlag, minorFlag, patchFlag, autoFlag, "")
 		if err != nil {
 			return err
 		}
@@ -286,7 +335,7 @@ func runTagCmd(majorFlag, minorFlag, patchFlag, skipConfirm, overwriteFlag, auto
 		fmt.Printf("✅ Latest tag: %s\n", current)
 		fmt.Println()
 
-		bumpType, err := resolveBumpType(reader, majorFlag, minorFlag, patchFlag, autoFlag)
+		bumpType, err := resolveBumpType(reader, majorFlag, minorFlag, patchFlag, autoFlag, current)
 		if err != nil {
 			return err
 		}

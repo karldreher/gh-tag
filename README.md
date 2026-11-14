@@ -16,11 +16,14 @@ gh extension install karldreher/gh-tag
 
 ```
 gh tag              # bump and push the next semver tag
+gh tag --auto       # infer the bump from conventional commits since the latest tag
 gh tag list         # list all semver tags, newest first
 gh tag view         # show the latest tag and its commit SHA
 gh tag view <tag>   # show a specific tag and its commit SHA
 gh tag prefix       # view or change the tag prefix (default: v)
 ```
+
+`gh tag --auto` reads every commit since the latest remote tag and applies the highest-order change, per semver: a breaking change (`feat!:`, `fix(api)!:`) bumps major, `feat:` bumps minor, and any other conventional type bumps patch. Commits that do not follow conventional commit format (such as merge commits) are skipped with a warning. The remote is the source of truth: if the tag is missing locally it is fetched, and you are warned when the local tag points elsewhere or the tag is not an ancestor of `HEAD`.
 
 `gh tag view --web` opens the tag's GitHub releases page in the browser. When no tag argument is given, it requires exactly one semver tag in the repository — if multiple exist, specify one explicitly (e.g. `gh tag view v1.2.3 --web`).
 
